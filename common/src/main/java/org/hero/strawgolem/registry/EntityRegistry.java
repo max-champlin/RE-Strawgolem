@@ -31,6 +31,13 @@ public final class EntityRegistry {
     public static final Supplier<EntityType<SmelterGolem>> SMELTERGOLEM = registerEntity("smelter_golem", SmelterGolem::new, 0.6f, 0.9f);
     public static final Supplier<EntityType<ExcavatorGolem>> EXCAVATORGOLEM = registerEntity("excavator_golem", ExcavatorGolem::new, 0.6f, 0.9f);
     public static final Supplier<EntityType<CookGolem>> COOKGOLEM = registerEntity("cook_golem", CookGolem::new, 0.6f, 0.9f);
+    public static final Supplier<EntityType<org.hero.strawgolem.golem.JanitorGolem>> JANITORGOLEM = registerEntity("janitor_golem", org.hero.strawgolem.golem.JanitorGolem::new, 0.6f, 0.9f);
+    public static final Supplier<EntityType<org.hero.strawgolem.golem.MilkmaidGolem>> MILKMAIDGOLEM = registerEntity("milkmaid_golem", org.hero.strawgolem.golem.MilkmaidGolem::new, 0.6f, 0.9f);
+    public static final Supplier<EntityType<org.hero.strawgolem.golem.GardenerGolem>> GARDENERGOLEM = registerEntity("gardener_golem", org.hero.strawgolem.golem.GardenerGolem::new, 0.6f, 0.9f);
+    public static final Supplier<EntityType<org.hero.strawgolem.golem.BrewerGolem>> BREWERGOLEM = registerEntity("brewer_golem", org.hero.strawgolem.golem.BrewerGolem::new, 0.6f, 0.9f);
+    public static final Supplier<EntityType<org.hero.strawgolem.golem.ButcherGolem>> BUTCHERGOLEM = registerEntity("butcher_golem", org.hero.strawgolem.golem.ButcherGolem::new, 0.6f, 0.9f);
+    public static final Supplier<EntityType<org.hero.strawgolem.golem.ArtisanGolem>> ARTISANGOLEM = registerEntity("artisan_golem", org.hero.strawgolem.golem.ArtisanGolem::new, 0.6f, 0.9f);
+    public static final Supplier<EntityType<org.hero.strawgolem.golem.MetalworkerGolem>> METALWORKERGOLEM = registerEntity("metalworker_golem", org.hero.strawgolem.golem.MetalworkerGolem::new, 0.6f, 0.9f);
 
     public static void registerEntityAttributes(BiConsumer<EntityType<? extends LivingEntity>, AttributeSupplier> registrar) {
         registrar.accept(EntityRegistry.STRAWGOLEM.get(), StrawGolem.createAttributes().build());
@@ -43,6 +50,13 @@ public final class EntityRegistry {
         registrar.accept(EntityRegistry.SMELTERGOLEM.get(), StrawGolem.createAttributes().build());
         registrar.accept(EntityRegistry.EXCAVATORGOLEM.get(), StrawGolem.createAttributes().build());
         registrar.accept(EntityRegistry.COOKGOLEM.get(), StrawGolem.createAttributes().build());
+        registrar.accept(EntityRegistry.JANITORGOLEM.get(), StrawGolem.createAttributes().build());
+        registrar.accept(EntityRegistry.MILKMAIDGOLEM.get(), StrawGolem.createAttributes().build());
+        registrar.accept(EntityRegistry.GARDENERGOLEM.get(), StrawGolem.createAttributes().build());
+        registrar.accept(EntityRegistry.BREWERGOLEM.get(), StrawGolem.createAttributes().build());
+        registrar.accept(EntityRegistry.BUTCHERGOLEM.get(), StrawGolem.createAttributes().build());
+        registrar.accept(EntityRegistry.ARTISANGOLEM.get(), StrawGolem.createAttributes().build());
+        registrar.accept(EntityRegistry.METALWORKERGOLEM.get(), StrawGolem.createAttributes().build());
     }
     private static <T extends Mob> Supplier<EntityType<T>> registerEntity(String name, EntityType.EntityFactory<T> entity, float width, float height) {
         return Constants.COMMON_PLATFORM.registerEntity(name, () -> EntityType.Builder.of(entity, MobCategory.CREATURE).sized(width, height).build(name));

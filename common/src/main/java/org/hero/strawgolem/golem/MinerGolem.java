@@ -41,6 +41,15 @@ public class MinerGolem extends StrawGolem {
     /** Blocks this miner is allowed to break; empty = no mining at all. */
     private final Set<Block> mineFilter = new LinkedHashSet<>();
 
+    public java.util.Set<net.minecraft.world.level.block.Block> getMineFilter() {
+        return mineFilter;
+    }
+
+    public void replaceMineFilter(java.util.Collection<net.minecraft.world.level.block.Block> blocks) {
+        mineFilter.clear();
+        mineFilter.addAll(blocks);
+    }
+
     public MinerGolem(EntityType<? extends StrawGolem> pEntityType, Level pLevel) {
         super(pEntityType, pLevel);
     }
@@ -123,6 +132,8 @@ public class MinerGolem extends StrawGolem {
         goalSelector.addGoal(0, new FloatGoal(this));
         goalSelector.addGoal(0, new PanicGoal(this, Golem.defaultRunSpeed * 1.2));
         generateAvoids();
+        goalSelector.addGoal(0, new org.hero.strawgolem.golem.goals.GolemGoHomeGoal(this));
+        goalSelector.addGoal(0, new org.hero.strawgolem.golem.goals.GolemEatGoal(this));
         goalSelector.addGoal(1, new MinerFetchGoal(this));
         goalSelector.addGoal(1, new MinerMineGoal(this));
         goalSelector.addGoal(2, new MinerStashGoal(this));

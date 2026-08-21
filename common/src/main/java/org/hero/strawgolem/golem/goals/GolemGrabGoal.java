@@ -39,8 +39,12 @@ public class GolemGrabGoal extends GolemMoveToBlockGoal {
     boolean pickUp = false;
     boolean itemAcquired = false;
     boolean stop = false;
+    private int stuckTicks = 0;
+    private final java.util.Map<Integer, Long> ignoreUntil = new java.util.HashMap<>();
+    private static final int GIVE_UP_TICKS = 80;
+    private static final int IGNORE_TICKS = 200;
     // May just make this into a regular predicate
-    BiPredicate<ItemEntity> predicate = (gol, entity) -> isInValidItems(entity.getItem().getItem()) && !entity.hasPickUpDelay() && ReachHelper.canPath(golem, entity.blockPosition());
+    BiPredicate<ItemEntity> predicate = (gol, entity) -> isInValidItems(entity.getItem().getItem()) && !entity.hasPickUpDelay() && !isIgnored(entity) && ReachHelper.canPath(golem, entity.blockPosition());
 
 
     public GolemGrabGoal(StrawGolem pMob) {
@@ -49,7 +53,13 @@ public class GolemGrabGoal extends GolemMoveToBlockGoal {
         constructValidItems();
     }
 
+    private boolean isIgnored(ItemEntity entity) {
+        Long until = ignoreUntil.get(entity.getId());
+        return until != null && until > golem.level().getGameTime();
+    }
+
     private void updateNearbyItems() {
+        ignoreUntil.values().removeIf(t -> t <= golem.level().getGameTime());
         items = golem.level().getEntitiesOfClass(ItemEntity.class,
                 golem.getBoundingBox().inflate(
                     Constants.Golem.searchRange,
@@ -78,6 +88,7 @@ public class GolemGrabGoal extends GolemMoveToBlockGoal {
         mob.getNavigation().stop();
         stop = true;
         itemAcquired = false;
+        stuckTicks = 0;
     }
 
     @Override
@@ -93,6 +104,27 @@ public class GolemGrabGoal extends GolemMoveToBlockGoal {
                 this.currentTarget = items.getFirst();
                 blockPos = currentTarget.blockPosition();
                 moveMobToBlock();
+            }
+        }
+        // Give up on an item we can path toward but never actually reach (wedged
+        // between crop stems) instead of looping on it forever and stalling.
+        if (currentTarget != null && !itemAcquired && !pickUp) {
+            if (ReachHelper.canReach(golem, currentTarget.blockPosition())) {
+                stuckTicks = 0;
+            } else if (++stuckTicks > GIVE_UP_TICKS) {
+                ignoreUntil.put(currentTarget.getId(), golem.level().getGameTime() + IGNORE_TICKS);
+                stuckTicks = 0;
+                golem.getNavigation().stop();
+                updateNearbyItems();
+                if (items.isEmpty()) {
+                    currentTarget = null;
+                    stop();
+                    return;
+                }
+                currentTarget = items.getFirst();
+                blockPos = currentTarget.blockPosition();
+                moveMobToBlock();
+                return;
             }
         }
         if (mob.distanceTo(currentTarget) >= Constants.Golem.depositDistance && golem.getNavigation().isDone()) {

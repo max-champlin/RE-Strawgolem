@@ -40,7 +40,10 @@ public class GolemHungerFeature implements IGolemTickFeature {
             }
             counter++;
             if (counter == waitTime) {
-                golem.setHunger(golem.getHunger() + 1);
+                // Masters have learned to pace themselves: 25% slower appetite.
+                if (golem.getRank() < 2 || golem.getRandom().nextInt(4) != 0) {
+                    golem.setHunger(golem.getHunger() + 1);
+                }
                 counter = 0;
             }
             updateGolemSpeed();
@@ -69,7 +72,13 @@ public class GolemHungerFeature implements IGolemTickFeature {
         var attr = golem.getAttribute(Attributes.MOVEMENT_SPEED);
         if (attr != null) {
             // Normalizing speedRatio, since I don't want Golems moving triple speed.
-            attr.setBaseValue(Constants.Golem.defaultMovement * Math.min(1.0f, speedRatio / 3.0f));
+            // FLOOR at 25%: at max hunger the old formula hit 0 speed, which froze
+            // a starving golem SOLID - it couldn't even crawl to the Lunch Cart to
+            // eat, so an empty cart soft-locked the whole crew. Now hunger still
+            // slows them hard (visible "feed me" signal) but they can always reach
+            // food and recover on their own once the cart is stocked.
+            float mult = Math.max(0.25f, Math.min(1.0f, speedRatio / 3.0f));
+            attr.setBaseValue(Constants.Golem.defaultMovement * mult);
         } else {
             // Should never trigger, but best to be safe.
             Constants.LOG.error("Golem missing Attribute: {}!", "Movement Speed");

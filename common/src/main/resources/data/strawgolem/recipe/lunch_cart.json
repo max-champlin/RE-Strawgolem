@@ -1,0 +1,23 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "BbB",
+    "PPP",
+    "P P"
+  ],
+  "key": {
+    "B": {
+      "item": "minecraft:bread"
+    },
+    "b": {
+      "item": "minecraft:bowl"
+    },
+    "P": {
+      "tag": "minecraft:planks"
+    }
+  },
+  "result": {
+    "id": "strawgolem:lunch_cart",
+    "count": 1
+  }
+}

@@ -60,6 +60,8 @@ public class LumberjackGolem extends StrawGolem {
         goalSelector.addGoal(0, new FloatGoal(this));
         goalSelector.addGoal(0, new PanicGoal(this, Golem.defaultRunSpeed * 1.2));
         generateAvoids();
+        goalSelector.addGoal(0, new org.hero.strawgolem.golem.goals.GolemGoHomeGoal(this));
+        goalSelector.addGoal(0, new org.hero.strawgolem.golem.goals.GolemEatGoal(this));
         goalSelector.addGoal(1, new LumberFetchGoal(this));
         goalSelector.addGoal(1, new LumberChopGoal(this));
         goalSelector.addGoal(2, new LumberStashGoal(this));

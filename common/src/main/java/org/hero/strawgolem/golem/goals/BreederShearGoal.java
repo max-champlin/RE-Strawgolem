@@ -8,7 +8,7 @@ import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.ShearsItem;
 import org.hero.strawgolem.Constants.Golem;
-import org.hero.strawgolem.golem.BreederGolem;
+import org.hero.strawgolem.golem.StrawGolem;
 
 import java.util.Comparator;
 import java.util.EnumSet;
@@ -21,19 +21,19 @@ import java.util.EnumSet;
 public class BreederShearGoal extends Goal {
     private static final double SHEAR_DIST_SQ = 4.0;
 
-    private final BreederGolem golem;
+    private final StrawGolem golem;
     private Animal target;
 
-    public BreederShearGoal(BreederGolem golem) {
+    public BreederShearGoal(StrawGolem golem) {
         this.golem = golem;
         setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK));
     }
 
-    public static boolean holdingShears(BreederGolem golem) {
+    public static boolean holdingShears(StrawGolem golem) {
         return golem.getMainHandItem().getItem() instanceof ShearsItem;
     }
 
-    public static Animal findShearable(BreederGolem golem) {
+    public static Animal findShearable(StrawGolem golem) {
         return golem.level().getEntitiesOfClass(Animal.class,
                         golem.getBoundingBox().inflate(Golem.searchRange),
                         a -> a.isAlive() && a instanceof Shearable sh && sh.readyForShearing())

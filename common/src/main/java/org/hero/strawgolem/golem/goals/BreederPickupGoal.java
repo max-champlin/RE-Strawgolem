@@ -4,7 +4,7 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.item.ItemEntity;
 import org.hero.strawgolem.Constants.Golem;
-import org.hero.strawgolem.golem.BreederGolem;
+import org.hero.strawgolem.golem.StrawGolem;
 import org.hero.strawgolem.golem.api.ReachHelper;
 
 import java.util.Comparator;
@@ -17,20 +17,30 @@ import java.util.List;
  * hand for breeding; everything else is returned to the chest by the stash goal.
  */
 public class BreederPickupGoal extends Goal {
-    private final BreederGolem golem;
+    /** Ticks of failing to reach a target before we give up on it. */
+    private static final int GIVE_UP_TICKS = 80;
+    /** How long (ticks) a given-up item is ignored before we try it again. */
+    private static final int IGNORE_TICKS = 200;
+
+    private final StrawGolem golem;
+    private final java.util.Map<Integer, Long> ignoreUntil = new java.util.HashMap<>();
     private ItemEntity target;
     private int pickupTicks;
+    private int stuckTicks;
     private boolean acquired;
 
-    public BreederPickupGoal(BreederGolem golem) {
+    public BreederPickupGoal(StrawGolem golem) {
         this.golem = golem;
         setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK));
     }
 
     private ItemEntity findItem() {
+        long now = golem.level().getGameTime();
+        ignoreUntil.values().removeIf(until -> until <= now);
         List<ItemEntity> items = golem.level().getEntitiesOfClass(ItemEntity.class,
                 golem.getBoundingBox().inflate(Golem.searchRange, Golem.searchRangeVertical, Golem.searchRange),
                 e -> e.isAlive() && !e.hasPickUpDelay() && !e.getItem().isEmpty()
+                        && !ignoreUntil.containsKey(e.getId())
                         && ReachHelper.canPath(golem, e.blockPosition()));
         return items.stream().min(Comparator.comparingDouble(golem::distanceToSqr)).orElse(null);
     }
@@ -52,8 +62,17 @@ public class BreederPickupGoal extends Goal {
     @Override
     public void start() {
         pickupTicks = 0;
+        stuckTicks = 0;
         acquired = false;
         moveToTarget();
+    }
+
+    /** Abandon the current target and ignore it for a while, so we don't re-grab it. */
+    private void giveUp() {
+        if (target != null) {
+            ignoreUntil.put(target.getId(), golem.level().getGameTime() + IGNORE_TICKS);
+        }
+        target = null;
     }
 
     @Override
@@ -76,6 +95,13 @@ public class BreederPickupGoal extends Goal {
         }
         golem.getLookControl().setLookAt(target);
         if (!ReachHelper.canReach(golem, target.blockPosition())) {
+            // Not there yet: keep pathing, but bail if we can never close the gap.
+            if (++stuckTicks > GIVE_UP_TICKS) {
+                giveUp();
+                golem.setPickupStatus(0);
+                golem.getNavigation().stop();
+                return;
+            }
             if (golem.getNavigation().isDone()) {
                 moveToTarget();
             }
@@ -83,6 +109,7 @@ public class BreederPickupGoal extends Goal {
             golem.setPickupStatus(0);
             return;
         }
+        stuckTicks = 0;
         // In reach: play the little pickup animation, then take the stack.
         if (pickupTicks == 0) {
             target.setPickUpDelay(40);

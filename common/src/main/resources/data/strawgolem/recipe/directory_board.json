@@ -1,0 +1,21 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "PPP",
+    "PCP",
+    "PPP"
+  ],
+  "key": {
+    "P": {
+      "tag": "minecraft:planks"
+    },
+    "C": {
+      "item": "strawgolem:golem_directory"
+    }
+  },
+  "result": {
+    "id": "strawgolem:directory_board",
+    "count": 1
+  }
+}

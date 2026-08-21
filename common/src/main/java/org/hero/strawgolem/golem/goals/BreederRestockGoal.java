@@ -71,7 +71,7 @@ public class BreederRestockGoal extends Goal {
             return false;
         }
         // A player-bound chest (golem orderer) always wins if it has usable food.
-        BlockPos prio = golem.getPriorityPos();
+        BlockPos prio = golem.getSupplyPos();
         if (prio.getX() != Integer.MAX_VALUE && ContainerHelper.isContainer(golem, prio)
                 && containerHasFood(prio) && ReachHelper.canPath(golem, prio)) {
             targetPos = prio;

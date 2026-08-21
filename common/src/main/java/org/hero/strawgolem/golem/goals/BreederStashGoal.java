@@ -52,10 +52,6 @@ public class BreederStashGoal extends Goal {
             idleTicks = 0;
             return false;
         }
-        if (BreederShearGoal.holdingShears(golem) && BreederShearGoal.findShearable(golem) != null) {
-            idleTicks = 0;
-            return false;
-        }
         boolean foodForSomeone = !golem.level().getEntitiesOfClass(net.minecraft.world.entity.animal.Animal.class,
                 golem.getBoundingBox().inflate(org.hero.strawgolem.Constants.Golem.searchRange),
                 a -> a.isAlive() && a.isFood(golem.getMainHandItem())).isEmpty();

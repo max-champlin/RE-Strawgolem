@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "has_sticks=false": {
+      "model": "strawgolem:block/stick_stand"
+    },
+    "has_sticks=true": {
+      "model": "strawgolem:block/stick_stand_full"
+    }
+  }
+}

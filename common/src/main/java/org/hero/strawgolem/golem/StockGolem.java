@@ -26,6 +26,15 @@ public class StockGolem extends StrawGolem {
     /** Item whitelist; empty = carry anything. Toggled by sneak-clicking the golem with an item. */
     private final java.util.Set<net.minecraft.world.item.Item> carryFilter = new java.util.LinkedHashSet<>();
 
+    public java.util.Set<net.minecraft.world.item.Item> getCarryFilter() {
+        return carryFilter;
+    }
+
+    public void replaceCarryFilter(java.util.Collection<net.minecraft.world.item.Item> items) {
+        carryFilter.clear();
+        carryFilter.addAll(items);
+    }
+
     public StockGolem(EntityType<? extends StrawGolem> pEntityType, Level pLevel) {
         super(pEntityType, pLevel);
     }
@@ -118,6 +127,8 @@ public class StockGolem extends StrawGolem {
         goalSelector.addGoal(0, new FloatGoal(this));
         goalSelector.addGoal(0, new PanicGoal(this, Golem.defaultRunSpeed * 1.2));
         generateAvoids();
+        goalSelector.addGoal(0, new org.hero.strawgolem.golem.goals.GolemGoHomeGoal(this));
+        goalSelector.addGoal(0, new org.hero.strawgolem.golem.goals.GolemEatGoal(this));
         goalSelector.addGoal(2, new GolemWanderGoal(this));
         goalSelector.addGoal(1, new StockWithdrawGoal(this));
         goalSelector.addGoal(1, new StockDeliverGoal(this));

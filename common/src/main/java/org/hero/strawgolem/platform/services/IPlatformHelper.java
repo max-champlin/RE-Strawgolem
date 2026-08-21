@@ -52,6 +52,17 @@ public interface IPlatformHelper {
         return isDevelopmentEnvironment() ? "development" : "production";
     }
     <T extends BlockEntity> Supplier<BlockEntityType<T>> registerBlockEntity(String id, Supplier<BlockEntityType<T>> blockEntityType);
+
+    /**
+     * Registers a block entity from a plain factory. The loader module builds
+     * the actual BlockEntityType, because vanilla's BlockEntitySupplier is not
+     * public without loader access wideners.
+     */
+    default <T extends BlockEntity> Supplier<BlockEntityType<T>> registerBlockEntity(String id,
+            java.util.function.BiFunction<net.minecraft.core.BlockPos, net.minecraft.world.level.block.state.BlockState, T> factory,
+            Supplier<? extends Block> block) {
+        throw new UnsupportedOperationException("registerBlockEntity(factory) not implemented on this platform");
+    }
     <T extends Block> Supplier<T> registerBlock(String id, Supplier<T> block);
     <T extends Entity> Supplier<EntityType<T>> registerEntity(String id, Supplier<EntityType<T>> entity);
     <T extends ArmorMaterial> Holder<T> registerArmorMaterial(String id, Supplier<T> armorMaterial);
@@ -90,7 +101,34 @@ public interface IPlatformHelper {
      * Extracts up to maxCount items matching the predicate from a platform-specific
      * item inventory at pos. Simulate=true only peeks. Returns EMPTY when nothing matches.
      */
+    /**
+     * Every stack in a block's item-handler inventory, as copies. Needed for
+     * capability-only containers (Sophisticated Storage and friends) that do
+     * NOT implement vanilla Container, so they can't be read slot-by-slot.
+     */
+    default java.util.List<net.minecraft.world.item.ItemStack> snapshotStacks(net.minecraft.world.level.LevelReader level, net.minecraft.core.BlockPos pos) {
+        return java.util.List.of();
+    }
+
     default net.minecraft.world.item.ItemStack extractMatching(net.minecraft.world.level.LevelReader level, net.minecraft.core.BlockPos pos, java.util.function.Predicate<net.minecraft.world.item.ItemStack> predicate, int maxCount, boolean simulate) {
         return net.minecraft.world.item.ItemStack.EMPTY;
+    }
+
+    /**
+     * Whether a platform inventory would accept this item in ANY slot, ignoring
+     * how full it currently is. This separates "no room right now" from "refuses
+     * this item on principle" (filtered/type-locked storage) so a golem stops
+     * re-offering goods a container will never take. Default: assume it would,
+     * i.e. treat a failed insert as fullness (the old, safe behaviour).
+     */
+    default boolean acceptsItem(net.minecraft.world.level.LevelReader level, net.minecraft.core.BlockPos pos, net.minecraft.world.item.ItemStack stack) {
+        return true;
+    }
+
+    /**
+     * Client-side: ask the server for this player's full golem roster. Default
+     * is a no-op so a platform without networking simply shows local golems.
+     */
+    default void requestRoster() {
     }
 }

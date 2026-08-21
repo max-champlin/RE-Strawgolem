@@ -32,6 +32,8 @@ import java.util.Map;
 public class CookCraftGoal extends Goal {
     private static final int SCAN_COOLDOWN = 60;
     private static final int CRAFT_TICKS = 30;
+    /** Working distance for chest/table - 3 blocks, squared. */
+    private static final double WORK_REACH_SQ = 9.0;
 
     private final CookGolem golem;
     private final Map<Item, List<RecipeHolder<CraftingRecipe>>> recipeCache = new HashMap<>();
@@ -57,7 +59,7 @@ public class CookCraftGoal extends Goal {
                 } catch (Throwable t) {
                     continue;
                 }
-                if (result != null && !result.isEmpty() && result.is(item)) {
+                if (result != null && !result.isEmpty() && result.is(item) && golem.acceptsRecipe(holder)) {
                     matches.add(holder);
                 }
             }
@@ -68,7 +70,7 @@ public class CookCraftGoal extends Goal {
     /** Snapshot of pantry contents as mutable stacks. */
     private List<ItemStack> pantrySnapshot() {
         List<ItemStack> snapshot = new ArrayList<>();
-        BlockPos chest = golem.getPriorityPos();
+        BlockPos chest = golem.getSupplyPos();
         if (golem.level().getBlockEntity(chest) instanceof Container container) {
             for (int i = 0; i < container.getContainerSize(); i++) {
                 ItemStack s = container.getItem(i);
@@ -77,12 +79,11 @@ public class CookCraftGoal extends Goal {
                 }
             }
         } else {
-            // Capability inventories: approximate via simulated extraction of everything visible.
-            // (Vanilla chests are the expected pantry; this path is best-effort.)
-            ItemStack probe = Services.PLATFORM.extractMatching(golem.level(), chest, s -> !s.isEmpty(), Integer.MAX_VALUE, true);
-            if (!probe.isEmpty()) {
-                snapshot.add(probe.copy());
-            }
+            // Capability-only inventories (Sophisticated Storage, drawers, AE2
+            // interfaces...) never implement vanilla Container, so read the whole
+            // item handler instead. Previously this probed a single stack, which
+            // made any such chest look almost empty and the golem never worked.
+            snapshot.addAll(Services.PLATFORM.snapshotStacks(golem.level(), chest));
         }
         return snapshot;
     }
@@ -129,29 +130,37 @@ public class CookCraftGoal extends Goal {
 
     /** Consumes the recipe's ingredients from the pantry; returns false if it no longer can. */
     private boolean consumeIngredients(RecipeHolder<CraftingRecipe> recipe) {
-        BlockPos chest = golem.getPriorityPos();
-        if (!(golem.level().getBlockEntity(chest) instanceof Container container)) {
-            return false;
-        }
+        BlockPos chest = golem.getSupplyPos();
         // Verify first against a snapshot, then actually remove.
         List<ItemStack> pantry = pantrySnapshot();
         if (!satisfiable(recipe, pantry)) {
             return false;
         }
+        boolean vanilla = golem.level().getBlockEntity(chest) instanceof Container;
+        Container container = vanilla ? (Container) golem.level().getBlockEntity(chest) : null;
         for (Ingredient ingredient : recipe.value().getIngredients()) {
             if (ingredient.isEmpty()) {
                 continue;
             }
-            for (int i = 0; i < container.getContainerSize(); i++) {
-                ItemStack slot = container.getItem(i);
-                if (!slot.isEmpty() && ingredient.test(slot)) {
-                    ItemStack taken = container.removeItem(i, 1);
-                    Item remainder = taken.getItem().getCraftingRemainingItem();
-                    if (remainder != null) {
-                        golem.depositToChest(new ItemStack(remainder));
+            ItemStack taken = ItemStack.EMPTY;
+            if (container != null) {
+                for (int i = 0; i < container.getContainerSize(); i++) {
+                    ItemStack slot = container.getItem(i);
+                    if (!slot.isEmpty() && ingredient.test(slot)) {
+                        taken = container.removeItem(i, 1);
+                        break;
                     }
-                    break;
                 }
+            } else {
+                // Capability inventory - pull one matching item through the handler.
+                taken = Services.PLATFORM.extractMatching(golem.level(), chest, ingredient::test, 1, false);
+            }
+            if (taken.isEmpty()) {
+                return false;
+            }
+            Item remainder = taken.getItem().getCraftingRemainingItem();
+            if (remainder != null) {
+                golem.depositToChest(new ItemStack(remainder));
             }
         }
         return true;
@@ -160,7 +169,7 @@ public class CookCraftGoal extends Goal {
     @Override
     public boolean canUse() {
         if (!golem.getMainHandItem().isEmpty() || !golem.hasMenu() || !golem.hasDepositChest()
-                || !ContainerHelper.isContainer(golem, golem.getPriorityPos())) {
+                || !ContainerHelper.isContainer(golem, golem.getSupplyPos())) {
             return false;
         }
         if (scanCooldown > 0) {
@@ -179,7 +188,7 @@ public class CookCraftGoal extends Goal {
     @Override
     public boolean canContinueToUse() {
         return !done && plan != null && kitchenPos != null
-                && ContainerHelper.isContainer(golem, golem.getPriorityPos());
+                && ContainerHelper.isContainer(golem, golem.getSupplyPos());
     }
 
     @Override
@@ -187,7 +196,7 @@ public class CookCraftGoal extends Goal {
         gathered = false;
         done = false;
         craftTicks = 0;
-        moveTo(golem.getPriorityPos());
+        moveTo(golem.getSupplyPos());
     }
 
     @Override
@@ -210,9 +219,13 @@ public class CookCraftGoal extends Goal {
             return;
         }
         if (!gathered) {
-            BlockPos chest = golem.getPriorityPos();
+            BlockPos chest = golem.getSupplyPos();
             golem.getLookControl().setLookAt(chest.getX() + 0.5, chest.getY() + 0.5, chest.getZ() + 0.5);
-            if (!ReachHelper.canReach(golem, chest)) {
+            // NOT ReachHelper (1.5 blocks): a golem stood beside a SOLID chest
+            // sits ~2.6 away, so it could walk up, stop, and never be "in reach"
+            // - it needed a physical shove to gather. Use the same forgiving
+            // working distance the crafting table already gets.
+            if (chest.distToCenterSqr(golem.getX(), golem.getY(), golem.getZ()) > WORK_REACH_SQ) {
                 if (golem.getNavigation().isDone()) {
                     moveTo(chest);
                 }

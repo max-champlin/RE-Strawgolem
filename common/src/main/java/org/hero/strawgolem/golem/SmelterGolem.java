@@ -122,6 +122,8 @@ public class SmelterGolem extends StrawGolem {
         goalSelector.addGoal(0, new FloatGoal(this));
         goalSelector.addGoal(0, new PanicGoal(this, Golem.defaultRunSpeed * 1.2));
         generateAvoids();
+        goalSelector.addGoal(0, new org.hero.strawgolem.golem.goals.GolemGoHomeGoal(this));
+        goalSelector.addGoal(0, new org.hero.strawgolem.golem.goals.GolemEatGoal(this));
         goalSelector.addGoal(1, new SmelterCollectGoal(this));
         goalSelector.addGoal(1, new SmelterSupplyGoal(this));
         goalSelector.addGoal(2, new SmelterStashGoal(this));

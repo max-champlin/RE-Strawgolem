@@ -47,6 +47,10 @@ public class Constants {
         public static final int searchRange = CONFIG.getInt("Harvest Range");
         public static final int breederPopulationCap = CONFIG.getInt("Breeder Population Cap");
         public static final int searchRangeVertical = 3;
+        // Reach distance for harvesting/depositing/grabbing. Back to the mod
+        // author's original 1.5: golems walk right up to the chest and deposit
+        // on arrival (the behavior Max wants). Bumping this made them dump from
+        // 3 blocks out instead of approaching - reverted 2026-07-22.
         public static final double depositDistance = 1.5;
         public static final boolean blockHarvest = CONFIG.getBool("Block Harvesting");
         public static final boolean whitelistHarvest = CONFIG.getBool("Use Whitelist");

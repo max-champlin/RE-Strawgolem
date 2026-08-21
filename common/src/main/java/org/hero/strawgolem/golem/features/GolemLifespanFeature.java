@@ -28,6 +28,9 @@ public class GolemLifespanFeature implements IGolemTickFeature {
             Constants.LOG.error("Straw Golem null in: {}!", "Lifespan Feature");
             return;
         }
+        if (golem.isImmortal()) {
+            return; // stepped outside time
+        }
         if (Constants.Golem.lifespan) {
             if (golem.getLifeSpan() >= Constants.Golem.maxLife) {
                 // Kill golem if its lived past its maximum lifespan

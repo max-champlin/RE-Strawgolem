@@ -104,9 +104,79 @@ public class GolemModel extends GeoModel<StrawGolem> {
             ResourceLocation.tryBuild(Constants.MODID, "textures/snow_dying.png")
     };
 
+    private static final ResourceLocation[] janitorTextures = {
+            ResourceLocation.tryBuild(Constants.MODID, "textures/janitor_golem.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/janitor_golem_old.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/janitor_golem_dying.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/snow.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/snow_old.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/snow_dying.png")
+    };
+
+    private static final ResourceLocation[] milkmaidTextures = {
+            ResourceLocation.tryBuild(Constants.MODID, "textures/milkmaid_golem.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/milkmaid_golem_old.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/milkmaid_golem_dying.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/snow.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/snow_old.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/snow_dying.png")
+    };
+
+    private static final ResourceLocation[] gardenerTextures = {
+            ResourceLocation.tryBuild(Constants.MODID, "textures/gardener_golem.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/gardener_golem_old.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/gardener_golem_dying.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/snow.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/snow_old.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/snow_dying.png")
+    };
+
+    private static final ResourceLocation[] brewerTextures = {
+            ResourceLocation.tryBuild(Constants.MODID, "textures/brewer_golem.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/brewer_golem_old.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/brewer_golem_dying.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/snow.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/snow_old.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/snow_dying.png")
+    };
+
+    private static final ResourceLocation[] metalworkerTextures = {
+            ResourceLocation.tryBuild(Constants.MODID, "textures/metalworker_golem.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/metalworker_golem_old.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/metalworker_golem_dying.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/snow.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/snow_old.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/snow_dying.png")
+    };
+
+    private static final ResourceLocation[] artisanTextures = {
+            ResourceLocation.tryBuild(Constants.MODID, "textures/artisan_golem.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/artisan_golem_old.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/artisan_golem_dying.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/snow.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/snow_old.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/snow_dying.png")
+    };
+
+    private static final ResourceLocation[] butcherTextures = {
+            ResourceLocation.tryBuild(Constants.MODID, "textures/butcher_golem.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/butcher_golem_old.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/butcher_golem_dying.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/snow.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/snow_old.png"),
+            ResourceLocation.tryBuild(Constants.MODID, "textures/snow_dying.png")
+    };
+
     @Override
     public ResourceLocation getTextureResource(StrawGolem strawGolem) {
-        ResourceLocation[] set = strawGolem instanceof org.hero.strawgolem.golem.BreederGolem ? breederTextures
+        ResourceLocation[] set = strawGolem instanceof org.hero.strawgolem.golem.MetalworkerGolem ? metalworkerTextures
+                : strawGolem instanceof org.hero.strawgolem.golem.ArtisanGolem ? artisanTextures
+                : strawGolem instanceof org.hero.strawgolem.golem.ButcherGolem ? butcherTextures
+                : strawGolem instanceof org.hero.strawgolem.golem.BrewerGolem ? brewerTextures
+                : strawGolem instanceof org.hero.strawgolem.golem.JanitorGolem ? janitorTextures
+                : strawGolem instanceof org.hero.strawgolem.golem.MilkmaidGolem ? milkmaidTextures
+                : strawGolem instanceof org.hero.strawgolem.golem.GardenerGolem ? gardenerTextures
+                : strawGolem instanceof org.hero.strawgolem.golem.BreederGolem ? breederTextures
                 : strawGolem instanceof org.hero.strawgolem.golem.ExcavatorGolem ? excavatorTextures
                 : strawGolem instanceof org.hero.strawgolem.golem.MinerGolem ? minerTextures
                 : strawGolem instanceof org.hero.strawgolem.golem.CookGolem ? cookTextures

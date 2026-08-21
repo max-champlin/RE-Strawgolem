@@ -19,6 +19,7 @@ public class CommonClass {
     // code that gets invoked by the entry point of the loader specific projects.
     public static void init() {
         Constants.LOG.info("Hello from {} init on {}! we are currently in a {} environment!", Constants.MOD_NAME, Services.PLATFORM.getPlatformName(), Services.PLATFORM.getEnvironmentName());
+        org.hero.strawgolem.registry.BlockRegistry.init();
         EntityRegistry.init();
         SoundRegistry.init();
         ItemRegistry.init();

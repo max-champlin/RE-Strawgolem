@@ -36,7 +36,7 @@ public class BeekeeperFetchGoal extends Goal {
 
     private boolean chestHas(Predicate<ItemStack> pred) {
         Level level = golem.level();
-        BlockPos chest = golem.getPriorityPos();
+        BlockPos chest = golem.getSupplyPos();
         if (level.getBlockEntity(chest) instanceof Container container) {
             for (int i = 0; i < container.getContainerSize(); i++) {
                 if (pred.test(container.getItem(i))) {
@@ -51,7 +51,7 @@ public class BeekeeperFetchGoal extends Goal {
     @Override
     public boolean canUse() {
         return golem.getMainHandItem().isEmpty() && golem.hasDepositChest()
-                && ContainerHelper.isContainer(golem, golem.getPriorityPos())
+                && ContainerHelper.isContainer(golem, golem.getSupplyPos())
                 && BeekeeperHarvestGoal.findFullHive(golem) != null
                 && (chestHas(BOTTLES) || chestHas(SHEARS));
     }
@@ -59,7 +59,7 @@ public class BeekeeperFetchGoal extends Goal {
     @Override
     public boolean canContinueToUse() {
         return !done && golem.getMainHandItem().isEmpty()
-                && ContainerHelper.isContainer(golem, golem.getPriorityPos());
+                && ContainerHelper.isContainer(golem, golem.getSupplyPos());
     }
 
     @Override
@@ -75,13 +75,13 @@ public class BeekeeperFetchGoal extends Goal {
     }
 
     private void moveToChest() {
-        BlockPos chest = golem.getPriorityPos();
+        BlockPos chest = golem.getSupplyPos();
         golem.getNavigation().moveTo(chest.getX() + 0.5, chest.getY(), chest.getZ() + 0.5, Golem.defaultWalkSpeed);
     }
 
     @Override
     public void tick() {
-        BlockPos chest = golem.getPriorityPos();
+        BlockPos chest = golem.getSupplyPos();
         golem.getLookControl().setLookAt(chest.getX() + 0.5, chest.getY() + 0.5, chest.getZ() + 0.5);
         if (!ReachHelper.canReach(golem, chest)) {
             moveToChest();
@@ -99,7 +99,7 @@ public class BeekeeperFetchGoal extends Goal {
 
     private ItemStack withdraw(Predicate<ItemStack> pred, int max) {
         Level level = golem.level();
-        BlockPos chest = golem.getPriorityPos();
+        BlockPos chest = golem.getSupplyPos();
         if (level.getBlockEntity(chest) instanceof Container container) {
             for (int i = 0; i < container.getContainerSize(); i++) {
                 ItemStack slot = container.getItem(i);

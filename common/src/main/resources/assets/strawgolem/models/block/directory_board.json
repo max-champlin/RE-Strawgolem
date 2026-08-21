@@ -1,0 +1,43 @@
+{
+  "parent": "block/block",
+  "textures": {
+    "face": "strawgolem:block/directory_board",
+    "edge": "strawgolem:block/directory_board_edge",
+    "particle": "strawgolem:block/directory_board_edge"
+  },
+  "elements": [
+    {
+      "from": [
+        1,
+        1,
+        14
+      ],
+      "to": [
+        15,
+        15,
+        16
+      ],
+      "faces": {
+        "north": {
+          "texture": "#face"
+        },
+        "south": {
+          "texture": "#edge",
+          "cullface": "south"
+        },
+        "east": {
+          "texture": "#edge"
+        },
+        "west": {
+          "texture": "#edge"
+        },
+        "up": {
+          "texture": "#edge"
+        },
+        "down": {
+          "texture": "#edge"
+        }
+      }
+    }
+  ]
+}

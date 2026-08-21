@@ -56,6 +56,11 @@ public class CookGolem extends StrawGolem {
         return menu;
     }
 
+    public void replaceMenu(java.util.Collection<Item> items) {
+        menu.clear();
+        menu.addAll(items);
+    }
+
     public boolean hasDepositChest() {
         return getPriorityPos().getX() != Integer.MAX_VALUE;
     }
@@ -77,6 +82,14 @@ public class CookGolem extends StrawGolem {
             }
         }
         return best;
+    }
+
+    /**
+     * Hook so a subclass can restrict which recipes this golem is willing to
+     * use. The Cook takes anything on its menu; the Artisan narrows it down.
+     */
+    public boolean acceptsRecipe(net.minecraft.world.item.crafting.RecipeHolder<net.minecraft.world.item.crafting.CraftingRecipe> holder) {
+        return true;
     }
 
     @Override
@@ -130,6 +143,8 @@ public class CookGolem extends StrawGolem {
         goalSelector.addGoal(0, new FloatGoal(this));
         goalSelector.addGoal(0, new PanicGoal(this, Golem.defaultRunSpeed * 1.2));
         generateAvoids();
+        goalSelector.addGoal(0, new org.hero.strawgolem.golem.goals.GolemGoHomeGoal(this));
+        goalSelector.addGoal(0, new org.hero.strawgolem.golem.goals.GolemEatGoal(this));
         goalSelector.addGoal(1, new CookCraftGoal(this));
         goalSelector.addGoal(2, new CookStashGoal(this));
         goalSelector.addGoal(2, new GolemWanderGoal(this));

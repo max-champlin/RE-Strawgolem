@@ -24,5 +24,12 @@ public class StrawClient {
         entityRenderers.accept(EntityRegistry.SMELTERGOLEM.get(), GolemRenderer::new);
         entityRenderers.accept(EntityRegistry.EXCAVATORGOLEM.get(), GolemRenderer::new);
         entityRenderers.accept(EntityRegistry.COOKGOLEM.get(), GolemRenderer::new);
+        entityRenderers.accept(EntityRegistry.JANITORGOLEM.get(), GolemRenderer::new);
+        entityRenderers.accept(EntityRegistry.MILKMAIDGOLEM.get(), GolemRenderer::new);
+        entityRenderers.accept(EntityRegistry.GARDENERGOLEM.get(), GolemRenderer::new);
+        entityRenderers.accept(EntityRegistry.BREWERGOLEM.get(), GolemRenderer::new);
+        entityRenderers.accept(EntityRegistry.BUTCHERGOLEM.get(), GolemRenderer::new);
+        entityRenderers.accept(EntityRegistry.ARTISANGOLEM.get(), GolemRenderer::new);
+        entityRenderers.accept(EntityRegistry.METALWORKERGOLEM.get(), GolemRenderer::new);
     }
 }

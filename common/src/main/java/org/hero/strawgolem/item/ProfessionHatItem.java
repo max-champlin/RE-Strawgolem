@@ -29,6 +29,16 @@ public class ProfessionHatItem extends Item {
     }
 
     @Override
+    public void appendHoverText(ItemStack stack, TooltipContext context, java.util.List<Component> tooltip, net.minecraft.world.item.TooltipFlag flag) {
+        tooltip.add(Component.translatable("item.strawgolem.profession_hat.tooltip")
+                .withStyle(net.minecraft.ChatFormatting.GRAY));
+        tooltip.add(Component.translatable("item.strawgolem.profession_hat.tooltip2")
+                .withStyle(net.minecraft.ChatFormatting.GRAY));
+        tooltip.add(Component.translatable("item.strawgolem.profession_hat.tooltip3")
+                .withStyle(net.minecraft.ChatFormatting.DARK_GRAY, net.minecraft.ChatFormatting.ITALIC));
+    }
+
+    @Override
     public InteractionResult interactLivingEntity(ItemStack stack, Player player, LivingEntity target, InteractionHand hand) {
         if (!(target instanceof StrawGolem golem)) {
             return InteractionResult.PASS;
@@ -46,6 +56,7 @@ public class ProfessionHatItem extends Item {
             return InteractionResult.PASS;
         }
         fresh.setHat(true);
+        fresh.claimIfUnowned(player);
         if (!player.getAbilities().instabuild) {
             stack.shrink(1);
         }

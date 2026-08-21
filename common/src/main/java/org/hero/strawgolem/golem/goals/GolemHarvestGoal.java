@@ -30,7 +30,17 @@ public class GolemHarvestGoal extends GolemMoveToBlockGoal {
     private Queue<BlockPos> queue;
     private int harvestTimer = 0;
     private ItemStack item;
-    private BiPredicate<BlockPos> predicate = (gol, pos) -> /*VisionHelper.canSee(gol, pos) && */isGrownPlant(gol.level(), pos) && ReachHelper.canPath(gol, pos);
+    private int approachTicks = 0;
+    private boolean gaveUp = false;
+    private double lastX;
+    private double lastZ;
+    private final java.util.Map<BlockPos, Long> ignoreUntil = new java.util.HashMap<>();
+    private static final int APPROACH_GIVE_UP = 100;
+    private static final int STUCK_NUDGE_AT = 30;
+    private static final int IGNORE_TICKS = 200;
+    private static final int RESCAN_TICKS = 20; // cap the crop-search sweep to ~1/sec
+    private long nextScanTime = 0;
+    private BiPredicate<BlockPos> predicate = (gol, pos) -> /*VisionHelper.canSee(gol, pos) && */isGrownPlant(gol.level(), pos) && !isIgnored(pos) && ReachHelper.canPath(gol, pos);
     public GolemHarvestGoal(StrawGolem golem) {
         super(golem, Constants.Golem.defaultWalkSpeed, Constants.Golem.searchRange, Constants.Golem.searchRangeVertical);
         this.golem = golem;
@@ -41,10 +51,56 @@ public class GolemHarvestGoal extends GolemMoveToBlockGoal {
         return VisionHelper.canSee(golem, blockPos) && predicate.filter(golem, blockPos);
     }
 
+    /** A crop we recently failed to reach; skipped for a while so we move on. */
+    private boolean isIgnored(BlockPos pos) {
+        Long until = ignoreUntil.get(pos);
+        if (until == null) {
+            return false;
+        }
+        if (until <= golem.level().getGameTime()) {
+            ignoreUntil.remove(pos);
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Re-path toward the target to break a nav hitch. Deliberately does NOT
+     * physically shove the golem - a random shove could push it off a ledge or
+     * a floating island into the void (which kills even immortal golems).
+     */
+    private void unstick() {
+        golem.getNavigation().stop();
+        moveMobToBlock();
+    }
+
     @Override
     public void tick() {
         try {
             super.tick();
+            // Keep our dibs fresh while we work toward / on this crop.
+            if (blockPos != null) {
+                CropClaims.claim(blockPos, golem.getId(), golem.level().getGameTime());
+            }
+            // Approach watchdog: while we still can't reach the crop, nudge a
+            // wedged golem free, and give up on an unreachable crop entirely so
+            // the goal can never lock up waiting on it.
+            if (item == null && blockPos != null) {
+                if (ReachHelper.canReach(mob, blockPos)) {
+                    approachTicks = 0;
+                } else {
+                    approachTicks++;
+                    boolean notMoving = Math.abs(golem.getX() - lastX) < 0.02 && Math.abs(golem.getZ() - lastZ) < 0.02;
+                    if (notMoving && approachTicks % STUCK_NUDGE_AT == 0) {
+                        unstick();
+                    }
+                    if (approachTicks > APPROACH_GIVE_UP) {
+                        gaveUp = true;
+                    }
+                }
+                lastX = golem.getX();
+                lastZ = golem.getZ();
+            }
             // Begin harvest phase animation
             if (ReachHelper.canReach(mob, blockPos) && item == null) {
                 // harvest time!
@@ -63,6 +119,15 @@ public class GolemHarvestGoal extends GolemMoveToBlockGoal {
                     item = harvest();
                     blockReset(golem.level());
                     golem.setItemSlot(EquipmentSlot.MAINHAND, item);
+                    // With a pack fitted, stow the primary drop as well and free
+                    // the hand so the next crop can be picked immediately. The
+                    // satchel already existed for a crop's EXTRA drops; the pack
+                    // simply lets the main one ride there too. Without it a golem
+                    // walks a full round trip per single essence, and at a chest
+                    // every 20 blocks that walk is ~95% of the job.
+                    if (golem.hasBackpack() && golem.stow(golem.getMainHandItem())) {
+                        golem.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+                    }
                 } else if (harvestTimer == 40) {
                     golem.setPickupStatus(0);
                 } else if (harvestTimer < 20 && !predicate.filter(golem, blockPos)) {
@@ -89,6 +154,10 @@ public class GolemHarvestGoal extends GolemMoveToBlockGoal {
         this.tryTicks = 0;
         harvestTimer = 0;
         item = null;
+        approachTicks = 0;
+        gaveUp = false;
+        lastX = golem.getX();
+        lastZ = golem.getZ();
     }
 
     @Override
@@ -96,6 +165,12 @@ public class GolemHarvestGoal extends GolemMoveToBlockGoal {
         golem.setPickupStatus(0);
         // ToDo: Look into a more gradual stop
         golem.getNavigation().stop();
+        if (gaveUp && blockPos != null) {
+            ignoreUntil.put(blockPos.immutable(), golem.level().getGameTime() + IGNORE_TICKS);
+        }
+        CropClaims.release(blockPos, golem.getId());
+        gaveUp = false;
+        approachTicks = 0;
     }
 
     @Override
@@ -108,29 +183,40 @@ public class GolemHarvestGoal extends GolemMoveToBlockGoal {
 
     @Override
     public boolean canUse() {
-        // maybe add a delay before allowing golem to harvest again... could solve lag
-        // Creating the queue of blocks, prevents re-searching for targets every time
-        if (golem.getMainHandItem().isEmpty() && queue == null) {
-            queue = VisionHelper.nearbyBlocks(golem, predicate);
-        } else if (queue != null && queue.isEmpty()) {
-            // If the queue is empty, remake it, may combine if statements...
+        long now = golem.level().getGameTime();
+        // (Re)build the crop queue only when empty-handed AND out of targets -
+        // and never more than once per RESCAN_TICKS. A golem waiting on a
+        // still-growing field would otherwise sweep the ENTIRE search cube
+        // (running a canPath check per ripe crop) every single tick. Throttling
+        // this is the big perf win - the dev's own comment above flagged it.
+        if (golem.getMainHandItem().isEmpty() && (queue == null || queue.isEmpty())) {
+            if (now < nextScanTime) {
+                return false;
+            }
+            nextScanTime = now + RESCAN_TICKS;
             queue = VisionHelper.nearbyBlocks(golem, predicate);
         }
         // No valid harvest locations or failed to create the queue.
         if (queue == null || queue.isEmpty()) return false;
         do {
-            // Go through the queue until a valid target is found.
+            // Skip crops another golem has already called dibs on.
             blockPos = queue.poll();
-        } while (!predicate.filter(golem, blockPos) && !queue.isEmpty());
-        // Either the queue is empty or there is a block position given.
-        // May give a blockpos out of sight range,
-        // unsure how this will harm golem efficiency.
-        return golem.getMainHandItem().isEmpty() && isValidTarget(golem.level(), blockPos);
+        } while (blockPos != null
+                && (!predicate.filter(golem, blockPos) || CropClaims.isTakenByOther(blockPos, golem.getId(), now))
+                && !queue.isEmpty());
+        boolean valid = golem.getMainHandItem().isEmpty() && blockPos != null
+                && predicate.filter(golem, blockPos)
+                && !CropClaims.isTakenByOther(blockPos, golem.getId(), now)
+                && isValidTarget(golem.level(), blockPos);
+        if (valid) {
+            CropClaims.claim(blockPos, golem.getId(), now);
+        }
+        return valid;
     }
 
     @Override
     public boolean canContinueToUse() {
-        return harvestTimer <= 38 && (golem.getMainHandItem().isEmpty() ||  harvestTimer <= 40) && isValidTarget(golem.level(), blockPos);
+        return !gaveUp && harvestTimer <= 38 && (golem.getMainHandItem().isEmpty() ||  harvestTimer <= 40) && isValidTarget(golem.level(), blockPos);
     }
 
     private boolean isPlant(LevelReader levelReader, BlockPos blockPos) {
@@ -142,6 +228,11 @@ public class GolemHarvestGoal extends GolemMoveToBlockGoal {
         if (levelReader == null || blockPos == null) return false;
         BlockState state = levelReader.getBlockState(blockPos);
         if (Constants.Golem.whitelistHarvest && !Constants.Golem.whitelist.contains(state.getBlock())) {
+            return false;
+        }
+        // Per-golem crop assignment: an empty filter means "work anything",
+        // otherwise this golem only touches the crops it was told to.
+        if (!golem.harvestFilterAccepts(state.getBlock())) {
             return false;
         }
         if (state.getBlock() instanceof CropBlock crop) {
@@ -182,9 +273,30 @@ public class GolemHarvestGoal extends GolemMoveToBlockGoal {
             LootParams.Builder builder = new LootParams.Builder(level).
                     withParameter(LootContextParams.TOOL, ItemStack.EMPTY).
                     withParameter(LootContextParams.ORIGIN, mob.position());
-            ItemStack drops = state.getDrops(builder).stream().filter(this::isCropDrop).findFirst()
-                    .orElse(state.getDrops(builder).stream().findFirst().orElse(ItemStack.EMPTY));
-            return drops;
+            // Take EVERYTHING the crop drops, not just the first stack. A crop
+            // can roll a second seed and fertilised essence on top of its
+            // essence; those used to be discarded outright (the block is reset
+            // rather than broken, so they were never even dropped on the floor).
+            // The best stack goes in hand, the rest ride in the satchel.
+            java.util.List<ItemStack> all = new java.util.ArrayList<>(state.getDrops(builder));
+            if (all.isEmpty()) {
+                return ItemStack.EMPTY;
+            }
+            int best = 0;
+            for (int i = 0; i < all.size(); i++) {
+                if (isCropDrop(all.get(i))) {
+                    best = i;
+                    break;
+                }
+            }
+            ItemStack primary = all.remove(best);
+            for (ItemStack extra : all) {
+                if (!golem.stow(extra)) {
+                    // Satchel full - drop it at our feet rather than delete it.
+                    net.minecraft.world.level.block.Block.popResource(level, blockPos, extra);
+                }
+            }
+            return primary;
         } else {
             Constants.LOG.error("Golem level not ServerLevel!");
             return ItemStack.EMPTY;

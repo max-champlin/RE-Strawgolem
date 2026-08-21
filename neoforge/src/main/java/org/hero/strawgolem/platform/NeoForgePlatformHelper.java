@@ -57,6 +57,14 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public <T extends BlockEntity> Supplier<BlockEntityType<T>> registerBlockEntity(String id,
+            java.util.function.BiFunction<net.minecraft.core.BlockPos, net.minecraft.world.level.block.state.BlockState, T> factory,
+            Supplier<? extends Block> block) {
+        return StrawNeo.BLOCK_ENTITIES.register(id,
+                () -> BlockEntityType.Builder.<T>of(factory::apply, block.get()).build(null));
+    }
+
+    @Override
     public <T extends Entity> Supplier<EntityType<T>> registerEntity(String id, Supplier<EntityType<T>> entity) {
         return StrawNeo.ENTITIES.register(id, entity);
     }
@@ -122,6 +130,47 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
             }
         }
         return stack;
+    }
+
+    @Override
+    public void requestRoster() {
+        org.hero.strawgolem.network.StrawNetwork.requestRoster();
+    }
+
+    @Override
+    public boolean acceptsItem(net.minecraft.world.level.LevelReader level, net.minecraft.core.BlockPos pos, net.minecraft.world.item.ItemStack stack) {
+        if (stack.isEmpty() || !(level instanceof net.minecraft.world.level.Level lvl)) {
+            return true;
+        }
+        var handler = lvl.getCapability(net.neoforged.neoforge.capabilities.Capabilities.ItemHandler.BLOCK, pos, null);
+        if (handler == null) {
+            return true; // not a capability inventory - nothing to judge
+        }
+        // isItemValid asks the FILTER, not the free space, so a storage chest
+        // locked to a different item answers false on every slot even when empty.
+        for (int slot = 0; slot < handler.getSlots(); slot++) {
+            if (handler.isItemValid(slot, stack)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public java.util.List<net.minecraft.world.item.ItemStack> snapshotStacks(net.minecraft.world.level.LevelReader level, net.minecraft.core.BlockPos pos) {
+        java.util.List<net.minecraft.world.item.ItemStack> out = new java.util.ArrayList<>();
+        if (level instanceof net.minecraft.world.level.Level lvl) {
+            var handler = lvl.getCapability(net.neoforged.neoforge.capabilities.Capabilities.ItemHandler.BLOCK, pos, null);
+            if (handler != null) {
+                for (int slot = 0; slot < handler.getSlots(); slot++) {
+                    net.minecraft.world.item.ItemStack s = handler.getStackInSlot(slot);
+                    if (!s.isEmpty()) {
+                        out.add(s.copy());
+                    }
+                }
+            }
+        }
+        return out;
     }
 
     @Override
