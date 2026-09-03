@@ -52,15 +52,31 @@ public class StashHeldItemGoal extends Goal {
      * seconds, all reporting {@code nav(done=true pathNull=false)}.
      *
      * <p>Distance is the honest test. A golem making progress is a golem worth
-     * waiting for; one that has not improved in five seconds is stuck.
+     * waiting for; one that has not improved in ten seconds is stuck. Ten rather than
+     * five because walking around an obstacle legitimately increases the
+     * distance for a while, and punishing that would strand golems that are
+     * doing exactly the right thing.
      */
-    private static final int STALL_LIMIT = 100;
+    private static final int STALL_LIMIT = 200;
 
     /** How long to leave it alone after giving up, so it does not retry instantly. */
     private static final int GIVE_UP_COOLDOWN = 200;
 
     /** Distance improvement that counts as progress rather than jitter. */
     private static final double PROGRESS_EPSILON = 0.25;
+
+    /**
+     * Minimum ticks between path searches, even when the navigator says it is
+     * finished.
+     *
+     * <p>The {@code isDone()} escape below exists so a golem that completed a
+     * stale path does not stand there forever. But a <em>partial</em> path - one
+     * that ends short of an unreachable chest - completes instantly and leaves
+     * {@code isDone()} true every tick after, which turns the escape into a full
+     * A* search twenty times a second. Five ticks is still responsive and costs
+     * a quarter as much.
+     */
+    private static final int MIN_REPATH_GAP = 5;
 
     private final StrawGolem golem;
     private final int idleBeforeStash;
@@ -142,9 +158,14 @@ public class StashHeldItemGoal extends Goal {
             } else {
                 stallTicks++;
             }
-            // Repath on a timer, or straight away if the navigator has run out of
-            // path - otherwise a golem that finished a stale path just stands there.
-            if (repathTicks-- <= 0 || golem.getNavigation().isDone()) {
+            // Repath on a timer, or sooner if the navigator has run out of path -
+            // otherwise a golem that finished a stale path just stands there.
+            // The early route is floored at MIN_REPATH_GAP so a permanently
+            // "done" partial path cannot drive a search every tick.
+            boolean due = --repathTicks <= 0;
+            boolean pathSpent = golem.getNavigation().isDone()
+                    && repathTicks <= REPATH_INTERVAL - MIN_REPATH_GAP;
+            if (due || pathSpent) {
                 repathTicks = REPATH_INTERVAL;
                 golem.getNavigation().moveTo(chest.getX() + 0.5, chest.getY(), chest.getZ() + 0.5,
                         Golem.defaultWalkSpeed);
