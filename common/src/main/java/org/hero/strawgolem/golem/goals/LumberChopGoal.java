@@ -95,7 +95,8 @@ public class LumberChopGoal extends Goal {
         List<BlockPos> candidates = new ArrayList<>();
         for (BlockPos pos : BlockPos.betweenClosed(center.offset(-r, -rv, -r), center.offset(r, rv, r))) {
             if (golem.level().getBlockState(pos).is(BlockTags.LOGS)
-                    && golem.level().getBlockState(pos.below()).is(BlockTags.DIRT)) {
+                    && golem.level().getBlockState(pos.below()).is(BlockTags.DIRT)
+                    && golem.mayWorkAt(pos)) {
                 candidates.add(pos.immutable());
             }
         }

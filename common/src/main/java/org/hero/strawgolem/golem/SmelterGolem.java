@@ -40,9 +40,6 @@ public class SmelterGolem extends StrawGolem {
         return false;
     }
 
-    public boolean hasDepositChest() {
-        return getPriorityPos().getX() != Integer.MAX_VALUE;
-    }
 
     /** All furnace-family block entities in working range, nearest first. */
     public List<BlockPos> findFurnaces() {
@@ -51,7 +48,7 @@ public class SmelterGolem extends StrawGolem {
         int rv = Golem.searchRangeVertical;
         List<BlockPos> found = new ArrayList<>();
         for (BlockPos pos : BlockPos.betweenClosed(center.offset(-r, -rv, -r), center.offset(r, rv, r))) {
-            if (level().getBlockEntity(pos) instanceof AbstractFurnaceBlockEntity) {
+            if (level().getBlockEntity(pos) instanceof AbstractFurnaceBlockEntity && mayWorkAt(pos)) {
                 found.add(pos.immutable());
             }
         }

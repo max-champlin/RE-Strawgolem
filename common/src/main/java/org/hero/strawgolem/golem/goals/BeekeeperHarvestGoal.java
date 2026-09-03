@@ -50,7 +50,8 @@ public class BeekeeperHarvestGoal extends Goal {
             if (!(state.getBlock() instanceof BeehiveBlock)) {
                 continue;
             }
-            if (!state.hasProperty(BeehiveBlock.HONEY_LEVEL) || state.getValue(BeehiveBlock.HONEY_LEVEL) < 5) {
+            if (!state.hasProperty(BeehiveBlock.HONEY_LEVEL) || state.getValue(BeehiveBlock.HONEY_LEVEL) < 5
+                    || !golem.mayWorkAt(pos)) {
                 continue;
             }
             double dist = pos.distToCenterSqr(golem.getX(), golem.getY(), golem.getZ());

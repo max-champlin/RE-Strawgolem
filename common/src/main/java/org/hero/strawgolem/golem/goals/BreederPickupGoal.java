@@ -41,6 +41,7 @@ public class BreederPickupGoal extends Goal {
                 golem.getBoundingBox().inflate(Golem.searchRange, Golem.searchRangeVertical, Golem.searchRange),
                 e -> e.isAlive() && !e.hasPickUpDelay() && !e.getItem().isEmpty()
                         && !ignoreUntil.containsKey(e.getId())
+                        && golem.mayWorkAt(e.blockPosition())
                         && ReachHelper.canPath(golem, e.blockPosition()));
         return items.stream().min(Comparator.comparingDouble(golem::distanceToSqr)).orElse(null);
     }

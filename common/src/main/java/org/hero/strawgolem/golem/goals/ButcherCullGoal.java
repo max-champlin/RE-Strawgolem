@@ -61,7 +61,8 @@ public class ButcherCullGoal extends Goal {
         Animal best = null;
         double bestDist = Double.MAX_VALUE;
         for (Animal animal : nearby) {
-            if (!cullable(animal) || adults.getOrDefault(animal.getType(), 0) <= HERD_KEEP) {
+            if (!cullable(animal) || adults.getOrDefault(animal.getType(), 0) <= HERD_KEEP
+                    || !golem.mayWorkAt(animal.blockPosition())) {
                 continue;
             }
             double dist = golem.distanceToSqr(animal);

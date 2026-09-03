@@ -21,8 +21,18 @@ import java.util.EnumSet;
 public class BreederShearGoal extends Goal {
     private static final double SHEAR_DIST_SQ = 4.0;
 
+    /**
+     * Ticks between path recalculations while closing on the animal.
+     *
+     * <p>Shorter than the interval the container goals use, because the target
+     * wanders off under its own power - but not every tick, which is what this
+     * did before and which meant a full A* search per golem per tick.
+     */
+    private static final int REPATH_INTERVAL = 10;
+
     private final StrawGolem golem;
     private Animal target;
+    private int repathTicks;
 
     public BreederShearGoal(StrawGolem golem) {
         this.golem = golem;
@@ -36,7 +46,8 @@ public class BreederShearGoal extends Goal {
     public static Animal findShearable(StrawGolem golem) {
         return golem.level().getEntitiesOfClass(Animal.class,
                         golem.getBoundingBox().inflate(Golem.searchRange),
-                        a -> a.isAlive() && a instanceof Shearable sh && sh.readyForShearing())
+                        a -> a.isAlive() && a instanceof Shearable sh && sh.readyForShearing()
+                                && golem.mayWorkAt(a.blockPosition()))
                 .stream().min(Comparator.comparingDouble(golem::distanceToSqr)).orElse(null);
     }
 
@@ -58,6 +69,7 @@ public class BreederShearGoal extends Goal {
     @Override
     public void start() {
         golem.getNavigation().moveTo(target, Golem.defaultWalkSpeed);
+        repathTicks = REPATH_INTERVAL;
     }
 
     @Override
@@ -73,7 +85,10 @@ public class BreederShearGoal extends Goal {
         }
         golem.getLookControl().setLookAt(target);
         if (golem.distanceToSqr(target) > SHEAR_DIST_SQ) {
-            golem.getNavigation().moveTo(target, Golem.defaultWalkSpeed);
+            if (repathTicks-- <= 0 || golem.getNavigation().isDone()) {
+                repathTicks = REPATH_INTERVAL;
+                golem.getNavigation().moveTo(target, Golem.defaultWalkSpeed);
+            }
             return;
         }
         if (target instanceof Shearable sh && sh.readyForShearing()) {

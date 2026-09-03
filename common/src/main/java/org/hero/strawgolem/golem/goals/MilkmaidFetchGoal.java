@@ -42,14 +42,14 @@ public class MilkmaidFetchGoal extends Goal {
     public static Cow findMilkable(StrawGolem golem) {
         return golem.level().getEntitiesOfClass(Cow.class,
                         golem.getBoundingBox().inflate(Golem.searchRange),
-                        c -> c.isAlive() && !c.isBaby())
+                        c -> c.isAlive() && !c.isBaby() && golem.mayWorkAt(c.blockPosition()))
                 .stream().min(Comparator.comparingDouble(golem::distanceToSqr)).orElse(null);
     }
 
     public static MushroomCow findStewable(StrawGolem golem) {
         return golem.level().getEntitiesOfClass(MushroomCow.class,
                         golem.getBoundingBox().inflate(Golem.searchRange),
-                        c -> c.isAlive() && !c.isBaby())
+                        c -> c.isAlive() && !c.isBaby() && golem.mayWorkAt(c.blockPosition()))
                 .stream().min(Comparator.comparingDouble(golem::distanceToSqr)).orElse(null);
     }
 

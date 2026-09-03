@@ -58,7 +58,7 @@ public class BreederBreedGoal extends Goal {
             int population = golem.level().getEntitiesOfClass(Animal.class,
                     golem.getBoundingBox().inflate(Golem.searchRange),
                     a -> a.getType() == type).size();
-            if (population >= Golem.breederPopulationCap) {
+            if (population >= Golem.breederPopulationCap || !golem.mayWorkAt(candidate.blockPosition())) {
                 continue;
             }
             long sameTypeFeedable = feedable.stream().filter(a -> a.getType() == type).count();

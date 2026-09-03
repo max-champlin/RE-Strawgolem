@@ -49,7 +49,8 @@ public class FisherFishGoal extends Goal {
         double bestDist = Double.MAX_VALUE;
         for (BlockPos pos : BlockPos.betweenClosed(center.offset(-r, -rv, -r), center.offset(r, rv, r))) {
             if (!golem.level().getFluidState(pos).is(net.minecraft.tags.FluidTags.WATER)
-                    || !golem.level().getBlockState(pos.above()).isAir()) {
+                    || !golem.level().getBlockState(pos.above()).isAir()
+                    || !golem.mayWorkAt(pos)) {
                 continue;
             }
             double dist = pos.distToCenterSqr(golem.getX(), golem.getY(), golem.getZ());

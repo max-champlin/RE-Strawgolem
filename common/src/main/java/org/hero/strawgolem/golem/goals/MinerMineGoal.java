@@ -49,7 +49,8 @@ public class MinerMineGoal extends Goal {
         double bestDist = Double.MAX_VALUE;
         for (BlockPos pos : BlockPos.betweenClosed(center.offset(-r, -rv, -r), center.offset(r, rv, r))) {
             BlockState state = golem.level().getBlockState(pos);
-            if (!golem.filterMatches(state.getBlock()) || state.getDestroySpeed(golem.level(), pos) < 0) {
+            if (!golem.filterMatches(state.getBlock()) || state.getDestroySpeed(golem.level(), pos) < 0
+                    || !golem.mayWorkAt(pos)) {
                 continue;
             }
             double dist = pos.distToCenterSqr(golem.getX(), golem.getY(), golem.getZ());
