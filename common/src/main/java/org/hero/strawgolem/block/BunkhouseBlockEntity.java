@@ -1,7 +1,6 @@
 package org.hero.strawgolem.block;
 
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
@@ -46,6 +45,19 @@ public class BunkhouseBlockEntity extends BlockEntity {
 
     public BunkhouseBlockEntity(BlockPos pos, BlockState state) {
         super(BlockRegistry.BUNKHOUSE_BLOCK_ENTITY.get(), pos, state);
+    }
+
+    /**
+     * For larger housing that reuses all of this behaviour.
+     *
+     * <p>Everything a bunkhouse does - checking golems in, holding them as NBT
+     * overnight, keeping the roster honest, banking souls, releasing at dawn -
+     * is identical whatever the size of the building. Only {@link #capacity()}
+     * differs, so a subclass overrides that and nothing else.
+     */
+    protected BunkhouseBlockEntity(net.minecraft.world.level.block.entity.BlockEntityType<?> type,
+                                   BlockPos pos, BlockState state) {
+        super(type, pos, state);
     }
 
     public int occupants() {
@@ -165,15 +177,30 @@ public class BunkhouseBlockEntity extends BlockEntity {
         return true;
     }
 
+    /**
+     * Golems released onto the same tile at once, above vanilla's cramming cap
+     * (default 24), take cramming damage - measured killing four of thirty-six
+     * on 2026-09-03, all newly recruited (immortal=false) and none deserving it.
+     *
+     * <p>{@link #findExit()} always returns the same single block, so every
+     * golem in a release used to be moved to identical coordinates in the same
+     * tick. This spreads them over every standable tile found, round-robin, so
+     * a bunkhouse can grow well past two dozen residents without a release
+     * killing a random slice of them.
+     */
+    private static final int MAX_PER_TILE_TARGET = 8;
+
     /** Wakes everyone: golems pop back out next to the bunkhouse. */
     public int releaseAll() {
         if (level == null || level.isClientSide || sleepers.isEmpty()) {
             return 0;
         }
+        List<BlockPos> exits = findExits(sleepers.size());
         int released = 0;
         // Fail-SAFE: a sleeper that can't be respawned is KEPT, never discarded,
         // so a golem is never silently lost. Failures are logged loudly.
         List<CompoundTag> kept = new ArrayList<>();
+        int i = 0;
         for (CompoundTag tag : sleepers) {
             Entity entity = EntityType.loadEntityRecursive(tag, level, e -> e);
             if (entity == null) {
@@ -183,7 +210,8 @@ public class BunkhouseBlockEntity extends BlockEntity {
                 kept.add(tag);
                 continue;
             }
-            BlockPos out = findExit();
+            BlockPos out = exits.get(i % exits.size());
+            i++;
             entity.moveTo(out.getX() + 0.5, out.getY(), out.getZ() + 0.5,
                     level.random.nextFloat() * 360.0F, 0.0F);
             if (level.addFreshEntity(entity)) {
@@ -216,28 +244,70 @@ public class BunkhouseBlockEntity extends BlockEntity {
                 && !level.getBlockState(p.below()).getCollisionShape(level, p.below()).isEmpty();
     }
 
-    private BlockPos findExit() {
-        for (Direction dir : Direction.Plane.HORIZONTAL) {
-            BlockPos p = worldPosition.relative(dir);
-            if (standable(p)) {
-                return p;
+    /**
+     * Every standable tile in the ring immediately around the bunkhouse, then
+     * one ring further out if that was not enough, then one step down for a
+     * house built on a ledge, then merely-passable tiles as a last resort - in
+     * that order, so a bunkhouse in an ordinary spot still exits everyone onto
+     * solid ground and only degrades when it has to.
+     *
+     * <p>{@code needed} is advisory, not a hard cap: search stops early once
+     * there are enough tiles that round-robining {@code needed} golems across
+     * them keeps every tile under {@link #MAX_PER_TILE_TARGET}. A search that
+     * comes up emptier than that still returns whatever it found - the caller
+     * wraps with modulo, so one tile is enough to release everyone, just not
+     * safely if the count is large. Never returns an empty list: the original
+     * single-tile fallback is the guaranteed last entry.
+     */
+    private List<BlockPos> findExits(int needed) {
+        List<BlockPos> found = new ArrayList<>();
+        int wantTiles = Math.max(1, (needed + MAX_PER_TILE_TARGET - 1) / MAX_PER_TILE_TARGET);
+
+        // Ring 1: immediate neighbours, then ring 2, same Y.
+        for (int radius = 1; radius <= 2 && found.size() < wantTiles; radius++) {
+            for (BlockPos p : ring(radius)) {
+                if (standable(p) && !found.contains(p)) {
+                    found.add(p);
+                }
             }
         }
-        // House on a ledge: try one step down.
-        for (Direction dir : Direction.Plane.HORIZONTAL) {
-            BlockPos p = worldPosition.relative(dir).below();
-            if (standable(p)) {
-                return p;
+        if (!found.isEmpty()) {
+            return found;
+        }
+        // House on a ledge: try one step down, immediate ring only.
+        for (BlockPos p : ring(1)) {
+            BlockPos down = p.below();
+            if (standable(down)) {
+                found.add(down);
             }
         }
-        // Merely-empty beats nothing; roof is the last resort.
-        for (Direction dir : Direction.Plane.HORIZONTAL) {
-            BlockPos p = worldPosition.relative(dir);
+        if (!found.isEmpty()) {
+            return found;
+        }
+        // Merely-passable beats nothing; roof is the last resort.
+        for (BlockPos p : ring(1)) {
             if (passable(p)) {
-                return p;
+                found.add(p);
             }
         }
-        return worldPosition.above();
+        if (found.isEmpty()) {
+            found.add(worldPosition.above());
+        }
+        return found;
+    }
+
+    /** The horizontal ring of blocks at the given Chebyshev distance, same Y. */
+    private List<BlockPos> ring(int radius) {
+        List<BlockPos> out = new ArrayList<>();
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dz = -radius; dz <= radius; dz++) {
+                if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) {
+                    continue;               // interior of a smaller ring already checked
+                }
+                out.add(worldPosition.offset(dx, 0, dz));
+            }
+        }
+        return out;
     }
 
     /** Morning bell: daybreak = everyone back to work. Retires first.
