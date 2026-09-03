@@ -77,6 +77,16 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
     public static final float baseHealth = Golem.maxHealth;
     // Synched data accessors for the Straw Golem.
     private static final EntityDataAccessor<Boolean> HAT = SynchedEntityData.defineId(StrawGolem.class, EntityDataSerializers.BOOLEAN);
+    /** Display-only mirrors of server-side state, for the client's directory. */
+    /** Body material. Synched because the client picks the texture from it. */
+    private static final EntityDataAccessor<Integer> MATERIAL =
+            SynchedEntityData.defineId(StrawGolem.class, EntityDataSerializers.INT);
+    private static final EntityDataAccessor<Integer> JOBS_SYNC =
+            SynchedEntityData.defineId(StrawGolem.class, EntityDataSerializers.INT);
+    private static final EntityDataAccessor<Integer> BAG_USED =
+            SynchedEntityData.defineId(StrawGolem.class, EntityDataSerializers.INT);
+    private static final EntityDataAccessor<BlockPos> HOME_SYNC =
+            SynchedEntityData.defineId(StrawGolem.class, EntityDataSerializers.BLOCK_POS);
     /** Synched so the renderer can show a pack, and so clients agree on capacity. */
     private static final EntityDataAccessor<Boolean> BACKPACK = SynchedEntityData.defineId(StrawGolem.class, EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Boolean> FESTIVE = SynchedEntityData.defineId(StrawGolem.class, EntityDataSerializers.BOOLEAN);
@@ -94,6 +104,19 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
      */
     private static final EntityDataAccessor<BlockPos> PICKUP_POS = SynchedEntityData.defineId(StrawGolem.class, EntityDataSerializers.BLOCK_POS);
     private static final EntityDataAccessor<Integer> RANK = SynchedEntityData.defineId(StrawGolem.class, EntityDataSerializers.INT);
+    /**
+     * Crew colour: 0 for undyed, otherwise DyeColor ordinal + 1.
+     *
+     * <p>A key, never a job. Colour decides which work orders a golem is
+     * ELIGIBLE for and nothing else - it cannot change what the golem is
+     * capable of, because that is its class.
+     *
+     * <p>Synched because the badge and the Foreman's Clipboard are both drawn
+     * client-side, and a crew you cannot see at a glance is not a crew.
+     */
+    private static final EntityDataAccessor<Integer> CREW_COLOUR =
+            SynchedEntityData.defineId(StrawGolem.class, EntityDataSerializers.INT);
+
     private static final EntityDataAccessor<Boolean> IMMORTAL = SynchedEntityData.defineId(StrawGolem.class, EntityDataSerializers.BOOLEAN);
     /** Client-visible label of the crop(s) this golem is assigned to ("" = any). */
     private static final EntityDataAccessor<String> ASSIGNMENT = SynchedEntityData.defineId(StrawGolem.class, EntityDataSerializers.STRING);
@@ -113,6 +136,22 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
     private boolean forceAnimationReset = false;
     // Variable for determining whether Straw Golem is creating snow particles.
     public boolean createSnow = false;
+
+    /**
+     * Use a navigator that refuses to repeat a search that just failed.
+     *
+     * <p>The goals in this mod overwhelmingly path with
+     * {@code if (getNavigation().isDone()) moveTo(target)}, which throttles
+     * itself only while the path succeeds. Against an unreachable target it runs
+     * a full A* every tick indefinitely - measured at 12,258 seconds on one
+     * golem. {@link GolemNavigation} caps that centrally instead of asking
+     * twenty-eight goals to each remember to.
+     */
+    @Override
+    protected net.minecraft.world.entity.ai.navigation.PathNavigation createNavigation(
+            net.minecraft.world.level.Level level) {
+        return new GolemNavigation(this, level);
+    }
 
     @Override
     protected void registerGoals() {
@@ -168,6 +207,11 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
         pBuilder.define(LIFE_SPAN, 0);
         pBuilder.define(PRIORITY_POS, new BlockPos(Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE));
         pBuilder.define(PICKUP_POS, new BlockPos(Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE));
+        pBuilder.define(CREW_COLOUR, 0);
+        pBuilder.define(MATERIAL, 0);
+        pBuilder.define(JOBS_SYNC, 0);
+        pBuilder.define(BAG_USED, 0);
+        pBuilder.define(HOME_SYNC, NO_POS);
         pBuilder.define(RANK, 0);
         pBuilder.define(IMMORTAL, false);
         pBuilder.define(ASSIGNMENT, "");
@@ -267,7 +311,15 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
             if (getBirthName().isEmpty()) {
                 setBirthName(GolemNames.generate(random));
             }
+            // Mirror the server-only fields the directory shows. SynchedEntityData
+            // only sends on change, so re-setting an unchanged value is free -
+            // and doing it here covers the satchel being drained by direct list
+            // operations in the deposit goal that no setter can intercept.
+            entityData.set(JOBS_SYNC, jobsDone);
+            entityData.set(BAG_USED, satchel.size());
+            entityData.set(HOME_SYNC, homePos == null ? NO_POS : homePos);
             tickWatch();
+            tickOrder();
             // Slow roster refresh - the directory only needs a position good to
             // within half a minute, and this runs for every golem in the world.
             if (tickCount % org.hero.strawgolem.network.GolemRegistry.UPDATE_INTERVAL == 0) {
@@ -329,7 +381,7 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
                 // Name tag wins, birth name otherwise - a golem asleep in a far
                 // bunkhouse should read the same in the Clipboard as it does
                 // standing in front of you.
-                hasCustomName() ? getCustomName().getString() : getBirthName(),
+                displayName(),
                 getClass().getSimpleName(),
                 getRank(),
                 isImmortal(),
@@ -431,6 +483,22 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
             watchLastPos = position();
             return;
         }
+        // IDLE IS NOT STUCK. A golem with an empty hand and no goal running has
+        // nothing it is failing at - it is waiting for work. That happens
+        // legitimately indoors, where RandomStrollGoal often finds no valid
+        // target and so does not run at all, leaving the golem standing.
+        //
+        // Reporting those was most of what the watch said: the same artisan
+        // logged STUCK/RECOVERED every evening for months while doing nothing
+        // wrong, and that noise is what a real wedge has to be spotted against.
+        // "Stuck" now means TRYING AND FAILING - carrying something it cannot
+        // put down, or running a goal that is getting nowhere.
+        if (getMainHandItem().isEmpty() && runningGoalNames().isEmpty()) {
+            watchTicks = 0;
+            watchReported = false;
+            watchLastPos = position();
+            return;
+        }
         if (watchLastPos == null) {
             watchLastPos = position();
             return;
@@ -521,6 +589,40 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
         ItemStack item = pPlayer.getMainHandItem();
         // Currently only doing main hand processing for reduction of bugs/unintended interactions.
         if (pHand == InteractionHand.MAIN_HAND && !item.isEmpty()) {
+            // Dye sets the crew colour. Same dye again clears it, so no extra
+            // tool is needed to undo one - and unlike Thaumcraft, picking a
+            // golem up does NOT wipe it. Losing a crew assignment by tidying up
+            // is a papercut with nothing to recommend it.
+            if (item.getItem() instanceof net.minecraft.world.item.DyeItem dye) {
+                net.minecraft.world.item.DyeColor want = dye.getDyeColor();
+                boolean same = want == getCrewColour();
+                // Clearing needs SNEAK. It used to be "the same dye again", which
+                // made assigning a crew a toggle - and a right-click that lands
+                // twice (a stray double-click, or a hand the game retries) then
+                // joined and immediately un-joined, leaving the golem undyed and
+                // the player reading "left the crew" for a golem they had just
+                // hired. A plain dye now only ever ASSIGNS, so repeating it is
+                // harmless and idempotent.
+                if (same && pPlayer.isShiftKeyDown()) {
+                    setCrewColour(null);
+                    pPlayer.displayClientMessage(net.minecraft.network.chat.Component.literal(
+                            displayName() + " left the crew"), true);
+                } else if (same) {
+                    // Say so rather than silently doing nothing, so a second
+                    // click reads as confirmation instead of a dead control.
+                    pPlayer.displayClientMessage(net.minecraft.network.chat.Component.literal(
+                            displayName() + " is already on the " + want.getName()
+                                    + " crew (sneak to remove)"), true);
+                } else {
+                    setCrewColour(want);
+                    if (!pPlayer.getAbilities().instabuild) {
+                        item.shrink(1);
+                    }
+                    pPlayer.displayClientMessage(net.minecraft.network.chat.Component.literal(
+                            displayName() + " joined the " + want.getName() + " crew"), true);
+                }
+                return InteractionResult.SUCCESS;
+            }
             // SNEAK + a seed/crop assigns this golem to that crop (toggle). An
             // empty list means it works everything, which stays the default -
             // so nobody has to set this up unless they want specialists.
@@ -656,7 +758,7 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
                 return;
             }
         } catch(Throwable e) {
-            LOG.error(e.getMessage());
+            LOG.error("Straw Golem: tick threw", e);
         }
         if (barrelHP() - pDamageAmount > 0) { // barrel blocks the damage.
             entityData.set(BARREL, (int) (barrelHP() - pDamageAmount));
@@ -691,9 +793,15 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
     @Override
     public void readAdditionalSaveData(CompoundTag tag) {
         super.readAdditionalSaveData(tag);
+        entityData.set(CREW_COLOUR, tag.getInt("CrewColour"));
         // Checking if golem speed needs fixed
         // Hat!
         this.entityData.set(HAT, tag.getBoolean("hat"));
+        // Absent on golems saved before materials existed - byId falls back to
+        // STRAW, which is exactly what an existing golem should be.
+        this.entityData.set(MATERIAL,
+                GolemMaterial.byId(tag.getString("material")).ordinal());
+        applyMaterialStats();
         this.entityData.set(BACKPACK, tag.getBoolean("backpack"));
         this.entityData.set(FESTIVE, tag.getBoolean("festive"));
         // I don't think it's necessary to keep golem panicking?
@@ -741,8 +849,10 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
 
     @Override
     public void addAdditionalSaveData(CompoundTag tag) {
+        tag.putInt("CrewColour", entityData.get(CREW_COLOUR));
         // Loading persistent golem data.
         tag.putBoolean("hat", this.hasHat());
+        tag.putString("material", getMaterial().id());
         tag.putBoolean("backpack", this.hasBackpack());
         tag.putBoolean("festive", this.entityData.get(FESTIVE));
         tag.putInt("carry", carryStatus());
@@ -1024,6 +1134,27 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
         return entityData.get(RANK);
     }
 
+    /** null when undyed. */
+    public net.minecraft.world.item.DyeColor getCrewColour() {
+        int v = entityData.get(CREW_COLOUR);
+        return v <= 0 ? null : net.minecraft.world.item.DyeColor.byId(v - 1);
+    }
+
+    public void setCrewColour(net.minecraft.world.item.DyeColor colour) {
+        entityData.set(CREW_COLOUR, colour == null ? 0 : colour.getId() + 1);
+    }
+
+    /**
+     * Can this golem work that order?
+     *
+     * <p>An order is either OPEN or locked to a single colour. A blue golem can
+     * never touch a red order under any configuration - teams are teams - while
+     * an open order is worked by anyone, dyed or not.
+     */
+    public boolean acceptsOrderColour(net.minecraft.world.item.DyeColor orderColour) {
+        return orderColour == null || orderColour == getCrewColour();
+    }
+
     public int getJobsDone() {
         return jobsDone;
     }
@@ -1093,6 +1224,26 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
     }
 
     /**
+     * What to call this golem anywhere a human reads it.
+     *
+     * <p>A nametag wins over the birth name, because that is what the player
+     * sees floating over its head, in the Clipboard and on a carrier bag. Half
+     * the crew here is renamed, so logging the birth name instead means the log
+     * and the game disagree about who is who - which is exactly what happened
+     * with the work order lines: they named golems the player had never heard
+     * of while the same golems sat in his inventory under different labels.
+     *
+     * <p>Falls back to a dash rather than an empty string so a log line does not
+     * silently collapse into nothing for a golem whose name has not rolled yet.
+     */
+    public String displayName() {
+        if (hasCustomName()) {
+            return getCustomName().getString();
+        }
+        return getBirthName().isEmpty() ? "-" : getBirthName();
+    }
+
+    /**
      * Rank and immortality are badges on the name: "Mabel Shafto ..".
      *
      * <p>Precedence is name tag, then birth name, then the plain entity type -
@@ -1132,6 +1283,20 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
 
     public BlockPos getPriorityPos() {
         return entityData.get(PRIORITY_POS);
+    }
+
+    /**
+     * Whether this golem has a chest bound to it.
+     *
+     * <p>"No chest" is stored as a priority position with an X of
+     * {@link Integer#MAX_VALUE} rather than as null, because the position is
+     * synched and {@code BlockPos} has no null on the wire.
+     *
+     * <p>Seven professions each carried a private copy of this one line. It is
+     * not profession-specific in any of them, so it lives here now.
+     */
+    public boolean hasDepositChest() {
+        return getPriorityPos().getX() != Integer.MAX_VALUE;
     }
 
     /**
@@ -1305,6 +1470,68 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
      * ~95% of the job, which is why the pack is worth roughly six times the
      * throughput.
      */
+    /** "unset" for a synched BlockPos. Matches the PRIORITY_POS convention. */
+    public static final BlockPos NO_POS =
+            new BlockPos(Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE);
+
+    public GolemMaterial getMaterial() {
+        return GolemMaterial.byOrdinal(this.entityData.get(MATERIAL));
+    }
+
+    /**
+     * Reforge the body. Keeps everything that makes it THIS golem - name, rank,
+     * jobs, soul, home, profession - because the whole point of an upgrade path
+     * is that you improve the golem you have rather than replacing it.
+     */
+    public void setMaterial(GolemMaterial material) {
+        this.entityData.set(MATERIAL, material.ordinal());
+        applyMaterialStats();
+    }
+
+    /**
+     * Push the material's numbers onto the attributes.
+     *
+     * <p>Health is set as a base value and the golem is healed to full, so an
+     * upgrade is felt immediately rather than leaving a stone golem sitting at 6
+     * of 15 hearts. Speed is a MULTIPLIER on the configured base - it must not
+     * stack with the hunger feature, which also writes MOVEMENT_SPEED, so this
+     * only ever runs on change and on load.
+     */
+    public void applyMaterialStats() {
+        if (level().isClientSide) {
+            return;
+        }
+        GolemMaterial m = getMaterial();
+        var hp = getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH);
+        if (hp != null) {
+            boolean wasFull = getHealth() >= getMaxHealth() - 0.01F;
+            hp.setBaseValue(m.health());
+            if (wasFull || getHealth() > m.health()) {
+                setHealth(m.health());
+            }
+        }
+        var spd = getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED);
+        if (spd != null) {
+            spd.setBaseValue(defaultMovement * m.speed());
+        }
+    }
+
+    /** Jobs completed, readable on the client. */
+    public int getJobsSynced() {
+        return this.entityData.get(JOBS_SYNC);
+    }
+
+    /** Satchel slots in use, readable on the client. */
+    public int getBagUsed() {
+        return this.entityData.get(BAG_USED);
+    }
+
+    /** Home bunkhouse, readable on the client; null when there is none. */
+    public BlockPos getHomeSynced() {
+        BlockPos p = this.entityData.get(HOME_SYNC);
+        return p == null || p.getX() == Integer.MAX_VALUE ? null : p;
+    }
+
     public int satchelCapacity() {
         return hasBackpack() ? BACKPACK_SLOTS : SATCHEL_MAX;
     }
@@ -1427,7 +1654,109 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
 
     /** No filter set = work every crop, which is the default behaviour. */
     public boolean harvestFilterAccepts(net.minecraft.world.level.block.Block block) {
-        return harvestFilter.isEmpty() || harvestFilter.contains(block);
+        if (!harvestFilter.isEmpty() && !harvestFilter.contains(block)) {
+            return false;
+        }
+        // A work order narrows further: the golem's own assignment says what it
+        // is willing to work, the order says what the crew has been TOLD to work,
+        // and it has to satisfy both. Orders never widen an assignment - a golem
+        // trained to wheat does not start cutting carrots because a board says so.
+        org.hero.strawgolem.block.WorkOrderBlockEntity order = currentOrder();
+        return order == null || order.acceptsBlock(block);
+    }
+
+    // --- work orders ------------------------------------------------------
+    //
+    // Which board this golem is taking instructions from. Resolved on a slow
+    // tick and remembered as a POSITION rather than as the block entity: a
+    // remembered block entity survives being removed from the world and would
+    // quietly keep issuing orders from a board that is no longer there.
+
+    private net.minecraft.core.BlockPos orderPos;
+    private int nextOrderScan = 0;
+
+    /** Ticks between re-deciding which order applies. */
+    private static final int ORDER_SCAN_INTERVAL = 40;
+
+    /**
+     * The order in force for this golem right now, or null.
+     *
+     * <p>Re-resolved every {@link #ORDER_SCAN_INTERVAL} ticks; between scans the
+     * remembered board is re-read (cheap) but not re-chosen (not cheap). That
+     * matters because this is called once per candidate crop, and a field sweep
+     * looks at a great many candidates.
+     */
+    public org.hero.strawgolem.block.WorkOrderBlockEntity currentOrder() {
+        if (level().isClientSide) {
+            return null;
+        }
+        if (orderPos != null && level().isLoaded(orderPos)
+                && level().getBlockEntity(orderPos)
+                    instanceof org.hero.strawgolem.block.WorkOrderBlockEntity be
+                && be.isActive() && acceptsOrderColour(be.crew())) {
+            return be;
+        }
+        orderPos = null;
+        return null;
+    }
+
+    /** Slow-tick hook: pick the board this golem answers to. */
+    private void tickOrder() {
+        if (--nextOrderScan > 0) {
+            return;
+        }
+        nextOrderScan = ORDER_SCAN_INTERVAL;
+        org.hero.strawgolem.block.WorkOrderBlockEntity best =
+                org.hero.strawgolem.block.WorkOrders.bestFor(this);
+        net.minecraft.core.BlockPos found = best == null ? null : best.getBlockPos();
+        // Say so when a golem takes an order or loses one. Whether an order is
+        // reaching the crew at all is otherwise invisible from in-game: a board
+        // that no golem can see looks exactly like a board every golem is
+        // ignoring, and the fix for those two is not the same.
+        if (!java.util.Objects.equals(found, orderPos)) {
+            if (found == null) {
+                LOG.info("ORDER dropped | {} '{}' id={} | was {}",
+                        getClass().getSimpleName(), displayName(), getId(), orderPos);
+            } else {
+                LOG.info("ORDER taken | {} '{}' id={} crew={} | board {} crew={} area={} filter={}",
+                        getClass().getSimpleName(), displayName(), getId(), getCrewColour(),
+                        found, best.crew(), best.hasArea() ? best.volume() + " blocks" : "unset",
+                        best.filter().isEmpty() ? "any" : best.filter().size() + " item(s)");
+            }
+        }
+        orderPos = found;
+        // Another crew's ground, refreshed on the same slow tick. Resolving
+        // boards means block-entity lookups, which must never happen inside a
+        // crop search - so it is done once here and the boxes are kept.
+        reserved = org.hero.strawgolem.block.WorkOrders.reservedAgainst(this);
+    }
+
+    /** Areas belonging to crews this golem is not on. Never null. */
+    private java.util.List<net.minecraft.world.phys.AABB> reserved = java.util.List.of();
+
+    /**
+     * May this golem work the block at {@code pos}?
+     *
+     * <p>Two rules, and they are not the same one. If it holds an order it is
+     * confined to that order's area. Separately, it may never work inside an
+     * area reserved by a crew it is not on - which applies to golems holding no
+     * order at all, and is the rule that was missing: an unassigned golem was
+     * checked against nothing and would happily harvest another crew's field.
+     */
+    public boolean mayWorkAt(net.minecraft.core.BlockPos pos) {
+        double x = pos.getX() + 0.5;
+        double y = pos.getY() + 0.5;
+        double z = pos.getZ() + 0.5;
+        org.hero.strawgolem.block.WorkOrderBlockEntity order = currentOrder();
+        if (order != null && !order.area().contains(x, y, z)) {
+            return false;
+        }
+        for (int i = 0; i < reserved.size(); i++) {
+            if (reserved.get(i).contains(x, y, z)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -1459,7 +1788,7 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
                         // we're actually holding, so a filtered chest is never
                         // picked as a target and then walked away from.
                         && !org.hero.strawgolem.golem.goals.FullChests.isBlocked(
-                                pos, gol.getMainHandItem(), gol.level().getGameTime());
+                                gol.level(), pos, gol.getMainHandItem(), gol.level().getGameTime());
 
         public boolean shouldChangeDeliverable(BlockPos pos) {
             // This is a XOR, basically:
@@ -1485,7 +1814,7 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
             // Stick with the chest we already know (steady, avoids dithering)
             // unless a crowd has formed on it.
             if (storagePos != null && predicate.filter(golem, storagePos)
-                    && ChestClaims.others(storagePos, golem.getId(), now) < CROWD_LIMIT) {
+                    && ChestClaims.others(golem.level(), storagePos, golem.getId(), now) < CROWD_LIMIT) {
                 return storagePos;
             }
             // Scanning the whole search cube (with a canPath test per container)
@@ -1502,7 +1831,7 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
                 BlockPos candidate;
                 while ((candidate = candidates.poll()) != null && checked < 8) {
                     checked++;
-                    long score = ChestClaims.others(candidate, golem.getId(), now) * CROWD_WEIGHT
+                    long score = ChestClaims.others(golem.level(), candidate, golem.getId(), now) * CROWD_WEIGHT
                             + candidate.distManhattan(golem.blockPosition());
                     if (score < bestScore) {
                         bestScore = score;
@@ -1522,7 +1851,7 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
             if (storagePos != null && ContainerHelper.isContainer(golem, storagePos)
                     && ContainerHelper.accepts(golem, storagePos, golem.getMainHandItem())
                     && !org.hero.strawgolem.golem.goals.FullChests.isBlocked(
-                            storagePos, golem.getMainHandItem(), now)) {
+                            golem.level(), storagePos, golem.getMainHandItem(), now)) {
                 return storagePos;
             }
             return null;

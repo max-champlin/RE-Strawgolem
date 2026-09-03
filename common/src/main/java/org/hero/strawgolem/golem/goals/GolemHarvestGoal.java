@@ -40,7 +40,24 @@ public class GolemHarvestGoal extends GolemMoveToBlockGoal {
     private static final int IGNORE_TICKS = 200;
     private static final int RESCAN_TICKS = 20; // cap the crop-search sweep to ~1/sec
     private long nextScanTime = 0;
+    /** The full test, including reachability. Used when picking a target. */
     private BiPredicate<BlockPos> predicate = (gol, pos) -> /*VisionHelper.canSee(gol, pos) && */isGrownPlant(gol.level(), pos) && !isIgnored(pos) && ReachHelper.canPath(gol, pos);
+
+    /**
+     * The same test without the reachability check, for the sweep itself.
+     *
+     * <p>{@link ReachHelper#canPath} runs a full A* search. Using the complete
+     * predicate to build the queue meant one search <b>per ripe crop in range</b>
+     * - on a saturated field that is hundreds of searches, every rescan, per
+     * golem, and the sweep already covers 26,011 positions.
+     *
+     * <p>The queue is ordered nearest-first and the loop below re-tests each
+     * candidate with the full predicate as it polls, so reachability still
+     * decides the target - it just gets asked about the nearest crop or two
+     * instead of all of them. Same answer, a fraction of the searching.
+     */
+    private final BiPredicate<BlockPos> scanPredicate = (gol, pos) ->
+            isGrownPlant(gol.level(), pos) && !isIgnored(pos);
     public GolemHarvestGoal(StrawGolem golem) {
         super(golem, Constants.Golem.defaultWalkSpeed, Constants.Golem.searchRange, Constants.Golem.searchRangeVertical);
         this.golem = golem;
@@ -48,7 +65,23 @@ public class GolemHarvestGoal extends GolemMoveToBlockGoal {
 
     @Override
     protected boolean isValidTarget(LevelReader levelReader, BlockPos blockPos) {
-        return VisionHelper.canSee(golem, blockPos) && predicate.filter(golem, blockPos);
+        return inOrderArea(blockPos)
+                && VisionHelper.canSee(golem, blockPos) && predicate.filter(golem, blockPos);
+    }
+
+    /**
+     * Whether a crop is inside the work area this golem has been given.
+     *
+     * <p>Checked before the vision and path tests because it is a pair of
+     * coordinate compares and they are not - and on a field this runs for every
+     * candidate block in the search volume.
+     *
+     * <p>An order with no area marked confines nothing; that is the documented
+     * "17x17x17 around this board" default shown in the screen, and the board
+     * builds that box itself.
+     */
+    private boolean inOrderArea(BlockPos pos) {
+        return golem.mayWorkAt(pos);
     }
 
     /** A crop we recently failed to reach; skipped for a while so we move on. */
@@ -80,7 +113,7 @@ public class GolemHarvestGoal extends GolemMoveToBlockGoal {
             super.tick();
             // Keep our dibs fresh while we work toward / on this crop.
             if (blockPos != null) {
-                CropClaims.claim(blockPos, golem.getId(), golem.level().getGameTime());
+                CropClaims.claim(golem.level(), blockPos, golem.getId(), golem.level().getGameTime());
             }
             // Approach watchdog: while we still can't reach the crop, nudge a
             // wedged golem free, and give up on an unreachable crop entirely so
@@ -141,7 +174,7 @@ public class GolemHarvestGoal extends GolemMoveToBlockGoal {
             }
         } catch (Throwable e) {
             // Using a try-catch to avoid all risk of player crashes.
-            Constants.LOG.error(e.getMessage());
+            Constants.LOG.error("Straw Golem: harvest goal threw", e);
             stop();
         }
 
@@ -168,7 +201,7 @@ public class GolemHarvestGoal extends GolemMoveToBlockGoal {
         if (gaveUp && blockPos != null) {
             ignoreUntil.put(blockPos.immutable(), golem.level().getGameTime() + IGNORE_TICKS);
         }
-        CropClaims.release(blockPos, golem.getId());
+        CropClaims.release(golem.level(), blockPos, golem.getId());
         gaveUp = false;
         approachTicks = 0;
     }
@@ -194,7 +227,7 @@ public class GolemHarvestGoal extends GolemMoveToBlockGoal {
                 return false;
             }
             nextScanTime = now + RESCAN_TICKS;
-            queue = VisionHelper.nearbyBlocks(golem, predicate);
+            queue = VisionHelper.nearbyBlocks(golem, scanPredicate);
         }
         // No valid harvest locations or failed to create the queue.
         if (queue == null || queue.isEmpty()) return false;
@@ -202,14 +235,14 @@ public class GolemHarvestGoal extends GolemMoveToBlockGoal {
             // Skip crops another golem has already called dibs on.
             blockPos = queue.poll();
         } while (blockPos != null
-                && (!predicate.filter(golem, blockPos) || CropClaims.isTakenByOther(blockPos, golem.getId(), now))
+                && (!predicate.filter(golem, blockPos) || CropClaims.isTakenByOther(golem.level(), blockPos, golem.getId(), now))
                 && !queue.isEmpty());
         boolean valid = golem.getMainHandItem().isEmpty() && blockPos != null
                 && predicate.filter(golem, blockPos)
-                && !CropClaims.isTakenByOther(blockPos, golem.getId(), now)
+                && !CropClaims.isTakenByOther(golem.level(), blockPos, golem.getId(), now)
                 && isValidTarget(golem.level(), blockPos);
         if (valid) {
-            CropClaims.claim(blockPos, golem.getId(), now);
+            CropClaims.claim(golem.level(), blockPos, golem.getId(), now);
         }
         return valid;
     }
@@ -259,7 +292,7 @@ public class GolemHarvestGoal extends GolemMoveToBlockGoal {
                     }
                 }
             } catch (Throwable e) {
-                Constants.LOG.error(e.getMessage());
+                Constants.LOG.error("Straw Golem: harvest goal threw", e);
                 return false;
             }
         }
@@ -331,7 +364,7 @@ public class GolemHarvestGoal extends GolemMoveToBlockGoal {
                     }
                 }
             } catch (Throwable e) {
-                Constants.LOG.error(e.getMessage());
+                Constants.LOG.error("Straw Golem: harvest goal threw", e);
                 // I'd rather wipe the block rather than duplicate it.
                 golem.level().setBlockAndUpdate(blockPos, Blocks.AIR.defaultBlockState());
             }

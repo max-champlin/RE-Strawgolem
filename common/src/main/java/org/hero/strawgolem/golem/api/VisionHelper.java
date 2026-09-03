@@ -24,54 +24,68 @@ public class VisionHelper {
         return Math.sqrt(Math.pow(pos1.getX() - pos2.getX(), 2) + Math.pow(pos1.getZ() - pos2.getZ(), 2)) <= Golem.searchRange;
     }
 
+    /**
+     * The nearest position passing the test, or null.
+     *
+     * <p>Same cube and the same mutable-cursor reasoning as
+     * {@link #nearbyBlocks}: 26,011 positions at the configured range, and
+     * previously 26,011 allocations to walk them.
+     */
     public static BlockPos findNearestBlock(StrawGolem golem, BiPredicate test) {
-//        if (storagePos != null && VisionHelper.canSee(StrawGolem.this, storagePos)) return storagePos;
         int range = Constants.Golem.searchRange;
         BlockPos closest = null;
+        int closestDist = Integer.MAX_VALUE;
         BlockPos query = golem.blockPosition();
+        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
         for (int x = -range; x <= range; ++x) {
             for (int y = -range / 2; y <= range / 2; ++y) {
                 for (int z = -range; z <= range; ++z) {
-                    BlockPos pos = query.offset(x, y, z);
-//                        System.out.println(ContainerHelper.isContainer(StrawGolem.this.level(), pos) + " " + VisionHelper.canSee(StrawGolem.this, pos));
-                    if (test.filter(golem, pos)
-                        /*&& !invalidContainers.contains(pos)*/) {
-//                        golem.getNavigation()
-                        // Should find the closest deliverable...
-                        closest = closest == null || query.distManhattan(pos) < query.distManhattan(closest) ? pos : closest;
-//                            containerSet.add(pos);
+                    cursor.set(query.getX() + x, query.getY() + y, query.getZ() + z);
+                    if (test.filter(golem, cursor)) {
+                        int dist = query.distManhattan(cursor);
+                        if (dist < closestDist) {
+                            closestDist = dist;
+                            closest = cursor.immutable();
+                        }
                     }
                 }
             }
         }
-//        storagePos = storagePos == null ? closest : storagePos;
         return closest;
-//        return null;
     }
 
+    /**
+     * Every position in the search cube that passes the test, nearest first.
+     *
+     * <p>The cube is {@code (2r+1)² × (r+1)} blocks - at the configured harvest
+     * range of 18 that is <b>26,011 positions per call</b>. It used to allocate a
+     * fresh {@link BlockPos} for each of them via {@code offset()}, so one sweep
+     * produced 26,000 short-lived objects, and a crew of twenty-five golems
+     * sweeping once a second produced most of a garbage collection on its own. A
+     * single mutable cursor does the same work with one allocation.
+     *
+     * <p>Only positions that actually pass the test are made immutable and kept.
+     * Anything the predicate passes onward must copy it - {@code GolemNavigation}
+     * does exactly that, for exactly this reason.
+     */
     public static Queue<BlockPos> nearbyBlocks(StrawGolem golem, BiPredicate test) {
-//        if (storagePos != null && VisionHelper.canSee(StrawGolem.this, storagePos)) return storagePos;
         int range = Constants.Golem.searchRange;
-        Queue<BlockPos> queue = new PriorityQueue<>(Comparator.comparingInt(pos -> pos.distManhattan(golem.blockPosition())));
-        BlockPos closest = null;
         BlockPos query = golem.blockPosition();
+        // Hoisted: this comparator runs O(n log n) times and blockPosition()
+        // builds a new BlockPos on every single call.
+        Queue<BlockPos> queue = new PriorityQueue<>(
+                Comparator.comparingInt(pos -> pos.distManhattan(query)));
+        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
         for (int x = -range; x <= range; ++x) {
             for (int y = -range / 2; y <= range / 2; ++y) {
                 for (int z = -range; z <= range; ++z) {
-                    BlockPos pos = query.offset(x, y, z);
-//                        System.out.println(ContainerHelper.isContainer(StrawGolem.this.level(), pos) + " " + VisionHelper.canSee(StrawGolem.this, pos));
-                    if (test.filter(golem, pos)
-                        /*&& !invalidContainers.contains(pos)*/) {
-//                        golem.getNavigation()
-                        // Should find the closest deliverable...
-                        closest = closest == null || query.distManhattan(pos) < query.distManhattan(closest) ? pos : closest;
-                            queue.add(pos);
+                    cursor.set(query.getX() + x, query.getY() + y, query.getZ() + z);
+                    if (test.filter(golem, cursor)) {
+                        queue.add(cursor.immutable());
                     }
                 }
             }
         }
-//        storagePos = storagePos == null ? closest : storagePos;
         return queue;
-//        return null;
     }
 }
