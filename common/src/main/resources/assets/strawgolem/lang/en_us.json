@@ -195,11 +195,11 @@
   "strawgolem.backpack.fitted": "%s straps on a pack (%d slots).",
   "strawgolem.backpack.already": "That golem already has a pack.",
   "strawgolem.bunkhouse.nograves": "Nobody has died here since the world came up. Keep it that way.",
-  "strawgolem.bunkhouse.raised": "%s gets up. The straw remembers. The Promise is spent.",
+  "strawgolem.bunkhouse.raised": "%s gets up. The straw remembers. The books are balanced.",
   "block.strawgolem.ghast_tear_block": "Block of Ghast Tears",
   "item.strawgolem.baba_yagas_promise": "Baba Yaga's Promise",
   "item.strawgolem.baba_yagas_promise.tooltip": "Sneak-click a lodge. The last golem to die there gets up again.",
   "item.strawgolem.baba_yagas_promise.tooltip2": "Same name, same trade, every job it ever did. Its clock starts over.",
-  "item.strawgolem.baba_yagas_promise.tooltip3": "She keeps her word exactly, and not one inch further.",
-  "item.strawgolem.baba_yagas_promise.tooltip4": "It walks out hungry, and no harder to kill than it was."
+  "item.strawgolem.baba_yagas_promise.tooltip3": "A life weighs what a life weighs. You do not get to haggle.",
+  "item.strawgolem.baba_yagas_promise.tooltip4": "There were four cheaper doors. You walked past all of them."
 }
