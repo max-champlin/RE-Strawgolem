@@ -42,6 +42,7 @@ public final class StrawNeo {
         // Golem Bindle safety net (despawn / death / void) lives on the game bus.
         GolemCarrierEvents.register(net.neoforged.neoforge.common.NeoForge.EVENT_BUS);
         registerHeadcount(net.neoforged.neoforge.common.NeoForge.EVENT_BUS);
+        registerClaimReset(net.neoforged.neoforge.common.NeoForge.EVENT_BUS);
         org.hero.strawgolem.network.StrawNetwork.register(modEventBus);
 //        modEventBus.<RegisterParticleProvidersEvent>addListener(event -> ParticleRegistry.registerParticleProv(event::put));
 
@@ -59,6 +60,60 @@ public final class StrawNeo {
                 net.neoforged.neoforge.capabilities.Capabilities.ItemHandler.BLOCK,
                 org.hero.strawgolem.registry.BlockRegistry.LUNCH_CART_BLOCK_ENTITY.get(),
                 (be, side) -> new net.neoforged.neoforge.items.wrapper.InvWrapper(be));
+    }
+
+    /**
+     * Empty the goal-level claim boards as a world comes up.
+     *
+     * <p>They are static, so in single player they outlive the world that filled
+     * them. Their entries expire against {@code level.getGameTime()}, which
+     * restarts on the new world's own clock - so claims made at game time
+     * 60,000,000 look 60 million ticks from expiring in a world that is at 1,000,
+     * and the crops and chests they name stay locked for the session.
+     *
+     * <p>On START rather than STOP on purpose: a crash, a kill, or a power cut
+     * never reaches a shutdown hook, and those are exactly the sessions after
+     * which you want a clean board.
+     */
+    private void registerClaimReset(net.neoforged.bus.api.IEventBus gameBus) {
+        gameBus.addListener((net.neoforged.neoforge.event.server.ServerAboutToStartEvent event) ->
+                org.hero.strawgolem.golem.goals.ClaimScope.clearAll());
+        registerBoardIndex(gameBus);
+    }
+
+    /**
+     * Index every work order board in a chunk as that chunk loads.
+     *
+     * <p>The block entity also announces itself from {@code clearRemoved}, but
+     * that is only reliably the PLACEMENT path. A board that was already in the
+     * world when you logged in comes back through chunk loading, and if that
+     * path does not announce it then the board is invisible to golems: marking
+     * an area, setting a crew and choosing a filter all work perfectly, the
+     * board just never reaches anybody. That failure is completely silent,
+     * which is the worst kind, so this hook does not depend on the other one
+     * being right - the index is a Set, so announcing twice costs nothing.
+     */
+    private void registerBoardIndex(net.neoforged.bus.api.IEventBus gameBus) {
+        gameBus.addListener((net.neoforged.neoforge.event.level.ChunkEvent.Load event) -> {
+            if (!(event.getLevel() instanceof net.minecraft.world.level.Level level) || level.isClientSide) {
+                return;
+            }
+            if (!(event.getChunk() instanceof net.minecraft.world.level.chunk.LevelChunk chunk)) {
+                return;
+            }
+            // Only block entities that already exist. ChunkAccess exposes the
+            // POSITIONS of pending ones too, but resolving those would force
+            // every block entity in the chunk to deserialize just so we can ask
+            // its type - a real cost on chunk load, paid for a block almost no
+            // chunk contains. Placement and load both go through clearRemoved;
+            // this is the belt to that pair of braces.
+            for (net.minecraft.world.level.block.entity.BlockEntity be
+                    : chunk.getBlockEntities().values()) {
+                if (be instanceof org.hero.strawgolem.block.WorkOrderBlockEntity) {
+                    org.hero.strawgolem.block.WorkOrders.register(level, be.getBlockPos());
+                }
+            }
+        });
     }
 
     /**
@@ -105,9 +160,43 @@ public final class StrawNeo {
                     loaded += n;
                 }
             }
+            // Sleepers are NOT entities - a checked-in golem is NBT inside a
+            // dormitory block and never appears in getAllEntities(). Counting
+            // only entities made a full apartment look like a vanished
+            // workforce, which on 2026-09-08 had the player believing 36 golems
+            // were lost. Any block holding a "Sleepers" list counts, found by
+            // NBT rather than by block name.
+            int asleep = org.hero.strawgolem.block.BunkhouseBlockEntity
+                    .sleepingEverywhere();
+            int found = loaded + asleep;
             Constants.LOG.info("Golem headcount at world load: {} on the roster, "
-                            + "{} currently loaded as entities{}",
-                    known, loaded, per.length() > 0 ? " (" + per + ")" : "");
+                            + "{} awake, {} asleep in dormitories, {} accounted for{}",
+                    known, loaded, asleep, found,
+                    per.length() > 0 ? " (" + per + ")" : "");
+            // Say something LOUD when the numbers disagree.
+            //
+            // The roster is the record of who should exist; awake plus asleep is
+            // who actually does. A quiet mismatch is the difference between
+            // noticing a loss today and discovering it a week later, and it is
+            // the one number nobody checks unless it shouts.
+            // Only shout if we actually looked somewhere. With no dormitory
+            // loaded, "asleep" is 0 because nothing was examined - warning then
+            // would cry wolf on every startup and train the player to ignore
+            // the one message that matters.
+            int dorms = org.hero.strawgolem.block.BunkhouseBlockEntity.dormitoriesLoaded();
+            if (known > found && dorms > 0) {
+                Constants.LOG.error("GOLEM HEADCOUNT MISMATCH: {} on the roster but "
+                                + "only {} accounted for - {} unaccounted. They may be "
+                                + "in unloaded chunks (harmless, recheck once the area "
+                                + "loads) or genuinely lost. Restore from a backup "
+                                + "BEFORE playing on if this does not resolve.",
+                        known, found, known - found);
+            }
+            // Boards indexed, alongside the headcount, because "the crew is
+            // ignoring my order" and "no board was ever indexed" look identical
+            // from inside the game.
+            Constants.LOG.info("Work order boards indexed: {}",
+                    org.hero.strawgolem.block.WorkOrders.count());
         });
     }
 

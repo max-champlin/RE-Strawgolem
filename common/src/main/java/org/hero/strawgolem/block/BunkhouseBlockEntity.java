@@ -190,6 +190,61 @@ public class BunkhouseBlockEntity extends BlockEntity {
      */
     private static final int MAX_PER_TILE_TARGET = 8;
 
+    /**
+     * Every loaded dormitory, so the workforce can be counted without walking
+     * chunks.
+     *
+     * <p>A sleeping golem is NBT inside one of these, not an entity, so
+     * {@code getAllEntities()} cannot see it - and counting only entities is
+     * what made a full apartment look like a vanished workforce. There is no
+     * public API for "every loaded block entity" (ChunkMap.getChunks() is
+     * protected), so they register themselves instead. Weak-keyed by position
+     * per level, and cleared on unload, so it cannot leak across worlds.
+     */
+    private static final java.util.Set<BunkhouseBlockEntity> LOADED =
+            java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
+
+    /** Called from loadAdditional, which every dormitory runs as it comes in. */
+    private void enroll() {
+        synchronized (LOADED) {
+            LOADED.add(this);
+        }
+    }
+
+    /** How many dormitories are currently loaded - 0 means we looked nowhere. */
+    public static int dormitoriesLoaded() {
+        synchronized (LOADED) {
+            LOADED.removeIf(BunkhouseBlockEntity::isRemoved);
+            return LOADED.size();
+        }
+    }
+
+    @Override
+    public void setRemoved() {
+        synchronized (LOADED) {
+            LOADED.remove(this);
+        }
+        super.setRemoved();
+    }
+
+    /** Total golems checked in across every loaded dormitory. */
+    public static int sleepingEverywhere() {
+        int n = 0;
+        synchronized (LOADED) {
+            for (BunkhouseBlockEntity house : LOADED) {
+                if (!house.isRemoved()) {
+                    n += house.sleepers.size();
+                }
+            }
+        }
+        return n;
+    }
+
+    /** How many are checked in right now. For the world-load reconciliation. */
+    public int sleeperCount() {
+        return sleepers.size();
+    }
+
     /** Wakes everyone: golems pop back out next to the bunkhouse. */
     public int releaseAll() {
         if (level == null || level.isClientSide || sleepers.isEmpty()) {
@@ -328,7 +383,19 @@ public class BunkhouseBlockEntity extends BlockEntity {
             house.registerSleepers(level, pos);
         }
         house.doAutoRetire();
-        if (level.isDay()) {
+        // Time of day, NOT isDay().
+        //
+        // Level.isDay() is `getSkyDarken() < 4`, and sky darkening rises with
+        // RAIN as well as with the sun. A decent downpour therefore makes it
+        // return false at midday, and everyone stays locked in through a
+        // working day - which is the exact opposite of the intent two comments
+        // up. Observed 2026-09-08: raining, /time set day, nobody came out, and
+        // the player reasonably assumed 36 golems had been lost.
+        //
+        // Reading the clock instead is rain-proof, thunder-proof, and cannot be
+        // defeated by a roof over the garden.
+        long timeOfDay = level.getDayTime() % 24000L;
+        if (timeOfDay < 12000L) {
             house.releaseAll();
         }
     }
@@ -391,7 +458,11 @@ public class BunkhouseBlockEntity extends BlockEntity {
                             tag.getUUID("UUID"), name, trade.toString(), rank,
                             tag.getBoolean("immortal"), tag.getInt("hunger"),
                             org.hero.strawgolem.network.RosterEntry.STATE_ASLEEP,
-                            dim, pos, level.getGameTime()));
+                            dim, pos, level.getGameTime(),
+                            // Straight off the sleeper's own NBT, same 0/id+1
+                            // encoding the live golem uses - so a golem keeps
+                            // its crew in the Directory while it is in bed.
+                            tag.getInt("CrewColour")));
         }
     }
 
@@ -408,6 +479,7 @@ public class BunkhouseBlockEntity extends BlockEntity {
     @Override
     protected void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.loadAdditional(tag, registries);
+        enroll();
         sleepers.clear();
         ListTag list = tag.getList("Sleepers", Tag.TAG_COMPOUND);
         for (int i = 0; i < list.size(); i++) {
