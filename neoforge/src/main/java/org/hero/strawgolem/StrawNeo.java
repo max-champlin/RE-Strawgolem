@@ -179,18 +179,27 @@ public final class StrawNeo {
             // who actually does. A quiet mismatch is the difference between
             // noticing a loss today and discovering it a week later, and it is
             // the one number nobody checks unless it shouts.
-            // Only shout if we actually looked somewhere. With no dormitory
-            // loaded, "asleep" is 0 because nothing was examined - warning then
-            // would cry wolf on every startup and train the player to ignore
-            // the one message that matters.
-            int dorms = org.hero.strawgolem.block.BunkhouseBlockEntity.dormitoriesLoaded();
-            if (known > found && dorms > 0) {
-                Constants.LOG.error("GOLEM HEADCOUNT MISMATCH: {} on the roster but "
-                                + "only {} accounted for - {} unaccounted. They may be "
-                                + "in unloaded chunks (harmless, recheck once the area "
-                                + "loads) or genuinely lost. Restore from a backup "
-                                + "BEFORE playing on if this does not resolve.",
-                        known, found, known - found);
+            // Deliberately NOT an alarm.
+            //
+            // The first version shouted GOLEM HEADCOUNT MISMATCH whenever the
+            // roster exceeded awake-plus-asleep, and its first live firing was
+            // a false positive: the player had every golem safely in bags for a
+            // rebuild. A shortfall here is the NORMAL state, not a fault - a
+            // golem can be bagged in any of a dozen mods' capture items, in an
+            // unloaded chunk, or in another dimension, and none of those are
+            // visible from a headcount.
+            //
+            // The roster is the authoritative record: it is persistent and
+            // survives all three. So report the gap as context and name the
+            // innocent explanations, rather than training the player to ignore
+            // a message that cannot tell safe from lost. A real loss shows up as
+            // the ROSTER shrinking, which is a different measurement and wants
+            // its own check.
+            if (known > found) {
+                Constants.LOG.info("{} of {} not currently in the world - normal if "
+                                + "they are bagged, in unloaded chunks, or in another "
+                                + "dimension. The roster is the count that matters.",
+                        known - found, known);
             }
             // Boards indexed, alongside the headcount, because "the crew is
             // ignoring my order" and "no board was ever indexed" look identical
