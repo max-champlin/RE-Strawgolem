@@ -173,7 +173,7 @@ public class ItemRegistry {
      * late, and it is priced so that being too late stings.
      */
     public static final Supplier<? extends Item> BABA_YAGAS_PROMISE = registerItem("baba_yagas_promise",
-            () -> new Item(new Item.Properties()
+            () -> new org.hero.strawgolem.item.BabaYagasPromiseItem(new Item.Properties()
                     .stacksTo(4)
                     .rarity(net.minecraft.world.item.Rarity.EPIC)
                     .fireResistant()));
