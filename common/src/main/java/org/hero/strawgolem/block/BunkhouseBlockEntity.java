@@ -90,6 +90,46 @@ public class BunkhouseBlockEntity extends BlockEntity {
      * veterans don't quietly die of old age while you're away. Player-driven:
      * nothing happens unless auto-retire is on AND souls are stocked.
      */
+    /**
+     * Last-chance retirement for a golem that is about to die of old age.
+     *
+     * <p>{@link #doAutoRetire()} only ever walks {@code sleepers}, so it can
+     * only save a golem that happens to be in bed when its counter rolls over.
+     * A Master working its shift ages out in the field and dies with its own
+     * cores sitting unused in this block - which is exactly what happened to
+     * twenty-two of them on 2026-09-04 at 19:51-19:57, every one logged
+     * {@code rank=2 immortal=false} and homed here.
+     *
+     * <p>Called from the lifespan feature at the moment of death, so the
+     * promise "auto-retire on, cores in the box, Masters do not die" is true
+     * whether they are asleep or halfway across the garden.
+     *
+     * @return true if a soul was spent and the golem should live
+     */
+    public boolean retireOnDeath(org.hero.strawgolem.golem.StrawGolem golem) {
+        if (!autoRetire || bankedSouls <= 0 || golem.isImmortal()) {
+            return false;
+        }
+        if (golem.getJobsDone() < org.hero.strawgolem.golem.StrawGolem.JOBS_MASTER) {
+            return false;
+        }
+        bankedSouls--;
+        golem.setImmortal(true);
+        setChanged();
+        if (level instanceof ServerLevel server) {
+            level.playSound(null, worldPosition, SoundEvents.TOTEM_USE,
+                    SoundSource.BLOCKS, 0.7F, 1.2F);
+            server.sendParticles(ParticleTypes.END_ROD,
+                    golem.getX(), golem.getY() + 0.8, golem.getZ(),
+                    16, 0.3, 0.3, 0.3, 0.03);
+        }
+        org.hero.strawgolem.Constants.LOG.info(
+                "RETIRED IN THE FIELD | '{}' reached the end of its lifespan at {} "
+                + "and was made immortal by a core from the lodge at {} | {} core(s) left",
+                golem.displayName(), golem.blockPosition(), worldPosition, bankedSouls);
+        return true;
+    }
+
     private void doAutoRetire() {
         if (!autoRetire || bankedSouls <= 0) {
             return;
@@ -198,46 +238,56 @@ public class BunkhouseBlockEntity extends BlockEntity {
      * {@code getAllEntities()} cannot see it - and counting only entities is
      * what made a full apartment look like a vanished workforce. There is no
      * public API for "every loaded block entity" (ChunkMap.getChunks() is
-     * protected), so they register themselves instead. Weak-keyed by position
-     * per level, and cleared on unload, so it cannot leak across worlds.
+     * protected), so they register themselves instead.
+     *
+     * <p><b>Keyed by dimension and position, not by object.</b> The first
+     * version used a set of instances and reported 73 asleep against a roster
+     * of 37: a block entity is recreated when a chunk reloads, and the stale
+     * instance is not always told it was removed, so the same dormitory counted
+     * twice. A position can only hold one dormitory, so the position is the
+     * identity and a re-registration replaces its predecessor.
      */
-    private static final java.util.Set<BunkhouseBlockEntity> LOADED =
-            java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
+    private static final java.util.Map<String, BunkhouseBlockEntity> LOADED =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
-    /** Called from loadAdditional, which every dormitory runs as it comes in. */
+    private String registryKey() {
+        return (level == null ? "?" : level.dimension().location().toString())
+                + "@" + worldPosition.getX() + "," + worldPosition.getY()
+                + "," + worldPosition.getZ();
+    }
+
+    /**
+     * Registered from serverTick rather than from load, because a block entity
+     * does not reliably have its level yet while it is reading its own NBT -
+     * and without the level there is no dimension to key it by.
+     */
     private void enroll() {
-        synchronized (LOADED) {
-            LOADED.add(this);
+        if (level != null && !level.isClientSide) {
+            LOADED.put(registryKey(), this);
         }
     }
 
     /** How many dormitories are currently loaded - 0 means we looked nowhere. */
     public static int dormitoriesLoaded() {
-        synchronized (LOADED) {
-            LOADED.removeIf(BunkhouseBlockEntity::isRemoved);
-            return LOADED.size();
-        }
-    }
-
-    @Override
-    public void setRemoved() {
-        synchronized (LOADED) {
-            LOADED.remove(this);
-        }
-        super.setRemoved();
+        LOADED.values().removeIf(BlockEntity::isRemoved);
+        return LOADED.size();
     }
 
     /** Total golems checked in across every loaded dormitory. */
     public static int sleepingEverywhere() {
         int n = 0;
-        synchronized (LOADED) {
-            for (BunkhouseBlockEntity house : LOADED) {
-                if (!house.isRemoved()) {
-                    n += house.sleepers.size();
-                }
+        for (BunkhouseBlockEntity house : LOADED.values()) {
+            if (!house.isRemoved()) {
+                n += house.sleepers.size();
             }
         }
         return n;
+    }
+
+    @Override
+    public void setRemoved() {
+        LOADED.remove(registryKey(), this);
+        super.setRemoved();
     }
 
     /** How many are checked in right now. For the world-load reconciliation. */
@@ -371,6 +421,7 @@ public class BunkhouseBlockEntity extends BlockEntity {
      * under a dome, rain never reaches them to age them anyway). They only head
      * home at night (GoHomeGoal), so they won't bounce straight back in. */
     public static void serverTick(Level level, BlockPos pos, BlockState state, BunkhouseBlockEntity house) {
+        house.enroll();
         if (level.getGameTime() % 20 != 0 || house.sleepers.isEmpty()) {
             return;
         }
@@ -479,7 +530,6 @@ public class BunkhouseBlockEntity extends BlockEntity {
     @Override
     protected void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.loadAdditional(tag, registries);
-        enroll();
         sleepers.clear();
         ListTag list = tag.getList("Sleepers", Tag.TAG_COMPOUND);
         for (int i = 0; i < list.size(); i++) {

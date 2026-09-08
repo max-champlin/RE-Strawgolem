@@ -389,7 +389,8 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
                 state,
                 level().dimension().location().toString(),
                 blockPosition(),
-                level().getGameTime()));
+                level().getGameTime(),
+                crewId()));
     }
 
     /** Drops this golem from the roster - it is gone for good. */
@@ -782,6 +783,10 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
         // fact - no log line, no body, nothing to grep.
         if (!level().isClientSide) {
             GolemWatch.reportGone(this, "KILLED", pDamageSource.getMsgId());
+            // A short, memory-only grace period. Nothing is written to disk and
+            // nothing survives a restart - see Graveyard for why it is kept
+            // deliberately narrow.
+            Graveyard.remember(this);
             clearFromRoster();
         }
         dropSatchel();   // a loaded satchel used to vanish with the golem
@@ -1132,6 +1137,18 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
 
     public int getRank() {
         return entityData.get(RANK);
+    }
+
+    /**
+     * The crew colour in its stored form: 0 undyed, otherwise DyeColor id + 1.
+     *
+     * <p>The roster carries this rather than the DyeColor so the value that
+     * crosses the network is the same one the golem persists, with no mapping
+     * in the middle that could drift.
+     */
+    public int crewId() {
+        net.minecraft.world.item.DyeColor c = getCrewColour();
+        return c == null ? 0 : c.getId() + 1;
     }
 
     /** null when undyed. */

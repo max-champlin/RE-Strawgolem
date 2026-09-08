@@ -27,6 +27,24 @@ import org.hero.strawgolem.registry.ItemRegistry;
  */
 public class BunkhouseBlock extends Block implements EntityBlock {
 
+    /**
+     * Is this position somewhere a golem can actually check in?
+     *
+     * <p>Deliberately NOT an exact block match. The apartment is a different
+     * block that extends this one, and matching {@code GOLEM_BUNKHOUSE} exactly
+     * made golems blind to it - they walked past a thirty-six bunk building to
+     * queue outside a twelve.
+     *
+     * <p>Requiring the block ENTITY as well handles the apartment's upper two
+     * storeys for free: they are shell blocks with no entity, so a golem never
+     * tries to sleep in the roof.
+     */
+    public static boolean isHousing(net.minecraft.world.level.BlockGetter level,
+                                    net.minecraft.core.BlockPos pos) {
+        return level.getBlockState(pos).getBlock() instanceof BunkhouseBlock
+                && level.getBlockEntity(pos) instanceof BunkhouseBlockEntity;
+    }
+
     public BunkhouseBlock(Properties properties) {
         super(properties);
     }
@@ -55,6 +73,37 @@ public class BunkhouseBlock extends Block implements EntityBlock {
             return ItemInteractionResult.sidedSuccess(true);
         }
         if (level.getBlockEntity(pos) instanceof BunkhouseBlockEntity house) {
+            // Sneak with a fistful of souls to bring back the most recent loss
+            // homed here. A plain click still banks one for retirement, which
+            // is the cheaper and better answer - this is for when you were too
+            // late.
+            if (player.isShiftKeyDown()) {
+                var pending = org.hero.strawgolem.golem.Graveyard.pending(pos);
+                if (pending.isEmpty()) {
+                    player.displayClientMessage(Component.translatable(
+                            "strawgolem.bunkhouse.nograves"), true);
+                    return ItemInteractionResult.sidedSuccess(false);
+                }
+                int cost = org.hero.strawgolem.golem.Graveyard.SOUL_COST;
+                if (!player.getAbilities().instabuild && stack.getCount() < cost) {
+                    player.displayClientMessage(Component.translatable(
+                            "strawgolem.bunkhouse.needsouls", cost), true);
+                    return ItemInteractionResult.sidedSuccess(false);
+                }
+                BlockPos out = pos.above();
+                String who = level instanceof net.minecraft.server.level.ServerLevel sl
+                        ? org.hero.strawgolem.golem.Graveyard.raise(sl, pos, out) : null;
+                if (who == null) {
+                    return ItemInteractionResult.sidedSuccess(false);
+                }
+                if (!player.getAbilities().instabuild) {
+                    stack.shrink(cost);
+                }
+                level.playSound(null, pos, SoundEvents.TOTEM_USE, SoundSource.BLOCKS, 1.0F, 0.8F);
+                player.displayClientMessage(Component.translatable(
+                        "strawgolem.bunkhouse.raised", who), false);
+                return ItemInteractionResult.sidedSuccess(false);
+            }
             house.bankSoul();
             if (!player.getAbilities().instabuild) {
                 stack.shrink(1);

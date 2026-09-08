@@ -73,8 +73,7 @@ public final class GolemWatch {
           + "| depositTargetKnown={} deliverable={}{} | priorityPos={} home={} | hunger={}/{} | rank={} immortal={}",
             stuckTicks / 20,
             golem.getClass().getSimpleName(),
-            golem.hasCustomName() ? golem.getCustomName().getString()
-                    : golem.getBirthName().isEmpty() ? "-" : golem.getBirthName(),
+            golem.displayName(),
             golem.getId(),
             golem.blockPosition(),
             goals,
@@ -108,13 +107,42 @@ public final class GolemWatch {
      *               is the whole point: DISCARDED is usually something the
      *               player did, KILLED is the golem actually dying.
      */
+    /**
+     * What has been lost this session, so it can be summarised on the way in.
+     *
+     * <p>Every death has been logged faithfully since 2026-08. That did not
+     * help: twenty-two golems aged out on 04 Sep, all twenty-two lines were
+     * written correctly, and nobody read them for four days. Logging an event
+     * and telling the player are different jobs.
+     */
+    private static final java.util.Map<String, Integer> LOST_THIS_SESSION =
+            new java.util.LinkedHashMap<>();
+
+    /** Reason -> count, and cleared once reported. */
+    public static synchronized java.util.Map<String, Integer> drainLost() {
+        java.util.Map<String, Integer> copy =
+                new java.util.LinkedHashMap<>(LOST_THIS_SESSION);
+        LOST_THIS_SESSION.clear();
+        return copy;
+    }
+
+    public static synchronized boolean anyLost() {
+        return !LOST_THIS_SESSION.isEmpty();
+    }
+
     static void reportGone(StrawGolem golem, String reason, String cause) {
+        if (!"DISCARDED".equals(reason)) {
+            synchronized (GolemWatch.class) {
+                LOST_THIS_SESSION.merge(
+                        reason + ("genericKill".equals(cause) ? " (old age)" : " (" + cause + ")"),
+                        1, Integer::sum);
+            }
+        }
         Constants.LOG.warn(
             "GOLEM-WATCH GONE [{}] | {} '{}' id={} @{} | cause={} | rank={} immortal={} hunger={}/{} health={} | held={} home={}",
             reason,
             golem.getClass().getSimpleName(),
-            golem.hasCustomName() ? golem.getCustomName().getString()
-                    : golem.getBirthName().isEmpty() ? "-" : golem.getBirthName(),
+            golem.displayName(),
             golem.getId(),
             golem.blockPosition(),
             cause,

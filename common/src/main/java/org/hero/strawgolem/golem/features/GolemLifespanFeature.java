@@ -19,6 +19,31 @@ public class GolemLifespanFeature implements IGolemTickFeature {
     }
 
     /**
+     * Spend a core from the golem's home lodge, if it has one with auto-retire
+     * on. Returns true when the golem has been made immortal and must not die.
+     */
+    private boolean retireInTheField(org.hero.strawgolem.golem.StrawGolem golem) {
+        if (golem.level().isClientSide) {
+            return false;
+        }
+        net.minecraft.core.BlockPos home = golem.getHomePos();
+        if (home == null) {
+            return false;
+        }
+        // The lodge's block entity lives at the base of the building, and a
+        // golem's home may name any storey of it.
+        for (int down = 0; down < 3; down++) {
+            net.minecraft.core.BlockPos p = home.below(down);
+            if (golem.level().getBlockEntity(p)
+                    instanceof org.hero.strawgolem.block.BunkhouseBlockEntity lodge
+                    && lodge.retireOnDeath(golem)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * This tick method will increment a counter, and after twenty counter increments
      * the Straw Golem's life span will increment by one.
      */
@@ -33,6 +58,17 @@ public class GolemLifespanFeature implements IGolemTickFeature {
         }
         if (Constants.Golem.lifespan) {
             if (golem.getLifeSpan() >= Constants.Golem.maxLife) {
+                // Ask the golem's own lodge for a core before killing it.
+                //
+                // Auto-retire used to run ONLY over the sleepers list, so it
+                // could save a Master that happened to be in bed and nobody
+                // else. Twenty-two Masters aged out mid-shift on 2026-09-04
+                // with their cores sitting unspent in the apartment they were
+                // homed to. Retirement has to be available at the moment of
+                // death, not only at bedtime.
+                if (retireInTheField(golem)) {
+                    return;
+                }
                 // Kill golem if its lived past its maximum lifespan
                 golem.kill();
                 return;

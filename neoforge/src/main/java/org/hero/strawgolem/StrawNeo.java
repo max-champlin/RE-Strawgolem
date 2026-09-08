@@ -42,6 +42,7 @@ public final class StrawNeo {
         // Golem Bindle safety net (despawn / death / void) lives on the game bus.
         GolemCarrierEvents.register(net.neoforged.neoforge.common.NeoForge.EVENT_BUS);
         registerHeadcount(net.neoforged.neoforge.common.NeoForge.EVENT_BUS);
+        registerLossReports(net.neoforged.neoforge.common.NeoForge.EVENT_BUS);
         registerClaimReset(net.neoforged.neoforge.common.NeoForge.EVENT_BUS);
         org.hero.strawgolem.network.StrawNetwork.register(modEventBus);
 //        modEventBus.<RegisterParticleProvidersEvent>addListener(event -> ParticleRegistry.registerParticleProv(event::put));
@@ -76,8 +77,13 @@ public final class StrawNeo {
      * which you want a clean board.
      */
     private void registerClaimReset(net.neoforged.bus.api.IEventBus gameBus) {
-        gameBus.addListener((net.neoforged.neoforge.event.server.ServerAboutToStartEvent event) ->
-                org.hero.strawgolem.golem.goals.ClaimScope.clearAll());
+        gameBus.addListener((net.neoforged.neoforge.event.server.ServerAboutToStartEvent event) -> {
+            org.hero.strawgolem.golem.goals.ClaimScope.clearAll();
+            // The graveyard is memory-only by design: close the game and the
+            // dead stay dead. Cleared on START rather than STOP because a
+            // crash, a kill or a power cut never reaches a shutdown hook.
+            org.hero.strawgolem.golem.Graveyard.clear();
+        });
         registerBoardIndex(gameBus);
     }
 
@@ -130,6 +136,48 @@ public final class StrawNeo {
      * if the count drops to zero overnight, it is in the log the next launch.
      * Fires 200 ticks in so chunks around the player have loaded first.
      */
+    /**
+     * Say in chat when golems are lost, while the player is there to read it.
+     *
+     * <p>Every death has been logged faithfully for weeks. It did not help:
+     * twenty-two aged out on 2026-09-04 at 19:51-19:57 with the player online,
+     * all twenty-two lines written correctly, and he found out four days later
+     * from a grep. Logging an event and telling someone are different jobs.
+     *
+     * <p>Batched on a 30 second flush rather than one message per golem,
+     * because twenty-two lines in six minutes is how a notification becomes
+     * something you turn off.
+     */
+    private void registerLossReports(net.neoforged.bus.api.IEventBus gameBus) {
+        gameBus.addListener((net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) -> {
+            net.minecraft.server.MinecraftServer server = event.getServer();
+            if (server.getTickCount() % 600 != 0
+                    || !org.hero.strawgolem.golem.GolemWatch.anyLost()) {
+                return;
+            }
+            java.util.Map<String, Integer> lost =
+                    org.hero.strawgolem.golem.GolemWatch.drainLost();
+            int n = lost.values().stream().mapToInt(Integer::intValue).sum();
+            StringBuilder how = new StringBuilder();
+            lost.forEach((k, v) -> {
+                if (how.length() > 0) {
+                    how.append(", ");
+                }
+                how.append(v).append(" ").append(k);
+            });
+            Constants.LOG.warn("GOLEMS LOST: {} ({})", n, how);
+            for (net.minecraft.server.level.ServerPlayer p
+                    : server.getPlayerList().getPlayers()) {
+                p.sendSystemMessage(net.minecraft.network.chat.Component.literal("[Golems] ")
+                        .withStyle(net.minecraft.ChatFormatting.GOLD)
+                        .append(net.minecraft.network.chat.Component.literal(
+                                "lost " + n + ": " + how + ". A Master with a core in "
+                                + "its lodge is now retired where it stands.")
+                                .withStyle(net.minecraft.ChatFormatting.YELLOW)));
+            }
+        });
+    }
+
     private void registerHeadcount(net.neoforged.bus.api.IEventBus gameBus) {
         gameBus.addListener((net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) -> {
             net.minecraft.server.MinecraftServer server = event.getServer();
