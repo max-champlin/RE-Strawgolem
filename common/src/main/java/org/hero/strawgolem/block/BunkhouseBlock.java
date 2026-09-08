@@ -66,28 +66,22 @@ public class BunkhouseBlock extends Block implements EntityBlock {
     @Override
     protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos,
                                             Player player, InteractionHand hand, BlockHitResult hitResult) {
-        if (stack.getItem() != ItemRegistry.IMMORTAL_SOUL.get()) {
+        boolean promise = stack.getItem() == ItemRegistry.BABA_YAGAS_PROMISE.get();
+        if (stack.getItem() != ItemRegistry.IMMORTAL_SOUL.get() && !promise) {
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
         }
         if (level.isClientSide) {
             return ItemInteractionResult.sidedSuccess(true);
         }
         if (level.getBlockEntity(pos) instanceof BunkhouseBlockEntity house) {
-            // Sneak with a fistful of souls to bring back the most recent loss
-            // homed here. A plain click still banks one for retirement, which
-            // is the cheaper and better answer - this is for when you were too
-            // late.
-            if (player.isShiftKeyDown()) {
+            // A Promise brings back the most recent golem lost here this
+            // session. A soul banks for retirement instead, which is the
+            // cheaper and better answer - this is for when you were too late.
+            if (promise) {
                 var pending = org.hero.strawgolem.golem.Graveyard.pending(pos);
                 if (pending.isEmpty()) {
                     player.displayClientMessage(Component.translatable(
                             "strawgolem.bunkhouse.nograves"), true);
-                    return ItemInteractionResult.sidedSuccess(false);
-                }
-                int cost = org.hero.strawgolem.golem.Graveyard.SOUL_COST;
-                if (!player.getAbilities().instabuild && stack.getCount() < cost) {
-                    player.displayClientMessage(Component.translatable(
-                            "strawgolem.bunkhouse.needsouls", cost), true);
                     return ItemInteractionResult.sidedSuccess(false);
                 }
                 BlockPos out = pos.above();
@@ -97,7 +91,7 @@ public class BunkhouseBlock extends Block implements EntityBlock {
                     return ItemInteractionResult.sidedSuccess(false);
                 }
                 if (!player.getAbilities().instabuild) {
-                    stack.shrink(cost);
+                    stack.shrink(org.hero.strawgolem.golem.Graveyard.COST);
                 }
                 level.playSound(null, pos, SoundEvents.TOTEM_USE, SoundSource.BLOCKS, 1.0F, 0.8F);
                 player.displayClientMessage(Component.translatable(

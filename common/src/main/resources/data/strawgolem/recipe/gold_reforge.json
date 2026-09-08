@@ -1,0 +1,22 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "group": "strawgolem_reforge",
+  "pattern": [
+    "MMM",
+    "MHM",
+    "MMM"
+  ],
+  "key": {
+    "M": {
+      "item": "minecraft:gold_block"
+    },
+    "H": {
+      "item": "strawgolem:straw_hat"
+    }
+  },
+  "result": {
+    "id": "strawgolem:gold_reforge",
+    "count": 1
+  }
+}

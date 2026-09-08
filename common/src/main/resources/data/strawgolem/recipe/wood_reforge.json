@@ -1,0 +1,22 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "group": "strawgolem_reforge",
+  "pattern": [
+    "MMM",
+    "MHM",
+    "MMM"
+  ],
+  "key": {
+    "M": {
+      "tag": "minecraft:planks"
+    },
+    "H": {
+      "item": "strawgolem:straw_hat"
+    }
+  },
+  "result": {
+    "id": "strawgolem:wood_reforge",
+    "count": 1
+  }
+}

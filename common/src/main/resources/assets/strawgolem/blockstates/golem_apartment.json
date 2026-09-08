@@ -1,0 +1,13 @@
+{
+  "variants": {
+    "segment=0": {
+      "model": "strawgolem:block/golem_apartment_bottom"
+    },
+    "segment=1": {
+      "model": "strawgolem:block/golem_apartment_middle"
+    },
+    "segment=2": {
+      "model": "strawgolem:block/golem_apartment_top"
+    }
+  }
+}

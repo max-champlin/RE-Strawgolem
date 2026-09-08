@@ -26,8 +26,8 @@ import java.util.List;
  * <ul>
  *   <li><b>Memory only.</b> Nothing is written to disk and nothing survives a
  *       restart. Close the game and the dead stay dead.</li>
- *   <li><b>A small window.</b> {@link #WINDOW_MS} minutes, then the record is
- *       dropped. This is a second chance, not an undo stack.</li>
+ *   <li><b>The window is the session.</b> No timer: the bound is that nothing
+ *       is written to disk. Restart and the dead stay dead.</li>
  *   <li><b>A hard cap.</b> {@link #MAX} graves; the oldest is discarded first,
  *       so a bad night cannot grow this without bound.</li>
  *   <li><b>Quiet.</b> One line when a golem is actually brought back. Deaths are
@@ -44,14 +44,28 @@ public final class Graveyard {
     private Graveyard() {
     }
 
-    /** How long a golem can be brought back, in real milliseconds. */
-    public static final long WINDOW_MS = 10 * 60 * 1000L;
+    /**
+     * There is no timer. The window is the session.
+     *
+     * <p>A wall-clock expiry was the first design and it was worse: it made the
+     * feature unpredictable (was that eight minutes ago or twelve?) without
+     * making it any safer, because the real bound is that none of this is
+     * written to disk. Most servers restart every twelve hours or so; that is
+     * the window, it is legible, and it needs no clock.
+     */
 
     /** Most graves held at once. Oldest goes first. */
     public static final int MAX = 16;
 
-    /** What it costs at the lodge. Retirement is one soul; this is dearer. */
-    public static final int SOUL_COST = 3;
+    /**
+     * What it costs at the lodge: one Baba Yaga's Promise.
+     *
+     * <p>Retirement is a single soul and stays the better answer. The Promise
+     * is a nether star block, three compressed diamond blocks, two triple-
+     * compressed redstone blocks and nine ghast tears - a price you feel, for a
+     * bargain you should not be making often.
+     */
+    public static final int COST = 1;
 
     public record Grave(CompoundTag nbt, String name, BlockPos diedAt,
                         BlockPos home, long deadAt) {
@@ -83,19 +97,8 @@ public final class Graveyard {
         }
     }
 
-    private static void expire() {
-        long cutoff = System.currentTimeMillis() - WINDOW_MS;
-        Iterator<Grave> it = GRAVES.iterator();
-        while (it.hasNext()) {
-            if (it.next().deadAt() < cutoff) {
-                it.remove();
-            }
-        }
-    }
-
     /** Who could still be brought back at this lodge, newest first. */
     public static synchronized List<Grave> pending(BlockPos lodge) {
-        expire();
         List<Grave> out = new ArrayList<>();
         for (Grave g : GRAVES) {
             if (g.home() != null && withinLodge(g.home(), lodge)) {
@@ -117,7 +120,6 @@ public final class Graveyard {
      * @return the name of whoever came back, or null if there was nobody
      */
     public static synchronized String raise(ServerLevel level, BlockPos lodge, BlockPos to) {
-        expire();
         for (Iterator<Grave> it = GRAVES.descendingIterator(); it.hasNext(); ) {
             Grave g = it.next();
             if (g.home() == null || !withinLodge(g.home(), lodge)) {

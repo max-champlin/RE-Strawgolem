@@ -1,0 +1,8 @@
+{
+  "parent": "minecraft:block/cube_bottom_top",
+  "textures": {
+    "side": "strawgolem:block/golem_apartment_top",
+    "top": "strawgolem:block/golem_apartment_roof",
+    "bottom": "strawgolem:block/golem_apartment_floor"
+  }
+}

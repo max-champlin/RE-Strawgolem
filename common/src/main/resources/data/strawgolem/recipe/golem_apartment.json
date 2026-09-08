@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "B",
+    "B",
+    "B"
+  ],
+  "key": {
+    "B": {
+      "item": "strawgolem:golem_bunkhouse"
+    }
+  },
+  "result": {
+    "id": "strawgolem:golem_apartment",
+    "count": 1
+  }
+}

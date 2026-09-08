@@ -1,0 +1,1 @@
+{"parent": "minecraft:block/cube_bottom_top", "textures": {"top": "strawgolem:block/golem_bunkhouse_top", "bottom": "strawgolem:block/golem_bunkhouse_bottom", "side": "strawgolem:block/golem_bunkhouse_side"}}

@@ -194,7 +194,8 @@
   "item.strawgolem.golem_backpack.flavor": "You don't carry the apples in one at a time.",
   "strawgolem.backpack.fitted": "%s straps on a pack (%d slots).",
   "strawgolem.backpack.already": "That golem already has a pack.",
-  "strawgolem.bunkhouse.nograves": "Nobody here has died recently enough to bring back.",
-  "strawgolem.bunkhouse.needsouls": "That would take %s immortal souls.",
-  "strawgolem.bunkhouse.raised": "%s has been brought back - hungry, mortal, and owed an apology."
+  "strawgolem.bunkhouse.nograves": "Nobody has died here since the world came up.",
+  "strawgolem.bunkhouse.raised": "%s has been brought back - hungry, mortal, and owed an apology.",
+  "block.strawgolem.ghast_tear_block": "Block of Ghast Tears",
+  "item.strawgolem.baba_yagas_promise": "Baba Yaga's Promise"
 }

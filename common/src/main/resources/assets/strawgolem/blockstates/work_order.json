@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "powered=false": {
+      "model": "strawgolem:block/work_order"
+    },
+    "powered=true": {
+      "model": "strawgolem:block/work_order_powered"
+    }
+  }
+}
