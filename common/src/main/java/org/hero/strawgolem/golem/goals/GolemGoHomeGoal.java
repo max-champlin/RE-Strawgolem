@@ -28,12 +28,26 @@ public class GolemGoHomeGoal extends Goal {
         setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK));
     }
 
+    /**
+     * Time to knock off - read from the clock, not the light level.
+     *
+     * <p>{@code Level.isNight()} is derived from sky darkening, which rain
+     * raises: it returns true at midday in a downpour. That is the same trap
+     * that kept a workforce locked in a dormitory through a working day, and
+     * with the dawn release now on the clock it would be actively worse - they
+     * would be let out at dawn and walk straight back in because the sky said
+     * night. One notion of "day" for both ends of the shift.
+     *
+     * <p>A night-shift golem inverts it: its bedtime is our daytime.
+     */
     private boolean bedtime() {
-        return golem.level().isNight();
+        long t = golem.level().getDayTime() % 24000L;
+        boolean daylight = t < 12000L;
+        return golem.isNightShift() == daylight;
     }
 
     private boolean isBunkhouse(BlockPos pos) {
-        return golem.level().getBlockState(pos).is(BlockRegistry.GOLEM_BUNKHOUSE.get());
+        return org.hero.strawgolem.block.BunkhouseBlock.isHousing(golem.level(), pos);
     }
 
     /** Remembered home if it still has room, else the nearest vacant bunkhouse. */

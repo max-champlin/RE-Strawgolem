@@ -201,5 +201,7 @@
   "item.strawgolem.baba_yagas_promise.tooltip": "Sneak-click a lodge. The last golem to die there gets up again.",
   "item.strawgolem.baba_yagas_promise.tooltip2": "Same name, same trade, every job it ever did. Its clock starts over.",
   "item.strawgolem.baba_yagas_promise.tooltip3": "A life weighs what a life weighs. You do not get to haggle.",
-  "item.strawgolem.baba_yagas_promise.tooltip4": "There were four cheaper doors. You walked past all of them."
+  "item.strawgolem.baba_yagas_promise.tooltip4": "There were four cheaper doors. You walked past all of them.",
+  "strawgolem.shift.nights": "%s will work nights and sleep through the day.",
+  "strawgolem.shift.days": "%s is back on days."
 }

@@ -594,6 +594,17 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
             // tool is needed to undo one - and unlike Thaumcraft, picking a
             // golem up does NOT wipe it. Losing a crew assignment by tidying up
             // is a papercut with nothing to recommend it.
+            // A clock puts a golem on nights. Same clock again puts it back on
+            // days. No new item for it: a clock is what you would reach for,
+            // it is cheap, and the meaning is unambiguous the first time.
+            if (item.is(net.minecraft.world.item.Items.CLOCK)) {
+                nightShift = !nightShift;
+                pPlayer.displayClientMessage(net.minecraft.network.chat.Component.translatable(
+                        nightShift ? "strawgolem.shift.nights" : "strawgolem.shift.days",
+                        displayName()), true);
+                playSound(SoundRegistry.GOLEM_INTERESTED.get());
+                return InteractionResult.SUCCESS;
+            }
             if (item.getItem() instanceof net.minecraft.world.item.DyeItem dye) {
                 net.minecraft.world.item.DyeColor want = dye.getDyeColor();
                 boolean same = want == getCrewColour();
@@ -799,6 +810,7 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
     public void readAdditionalSaveData(CompoundTag tag) {
         super.readAdditionalSaveData(tag);
         entityData.set(CREW_COLOUR, tag.getInt("CrewColour"));
+        nightShift = tag.getBoolean("nightShift");
         // Checking if golem speed needs fixed
         // Hat!
         this.entityData.set(HAT, tag.getBoolean("hat"));
@@ -855,6 +867,9 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
     @Override
     public void addAdditionalSaveData(CompoundTag tag) {
         tag.putInt("CrewColour", entityData.get(CREW_COLOUR));
+        if (nightShift) {
+            tag.putBoolean("nightShift", true);
+        }
         // Loading persistent golem data.
         tag.putBoolean("hat", this.hasHat());
         tag.putString("material", getMaterial().id());
@@ -1181,6 +1196,23 @@ public class StrawGolem extends AbstractGolem implements GeoAnimatable {
         jobsDone = jobs;
         entityData.set(RANK, rankFor(jobs));
         applyRankPerks();
+    }
+
+    /**
+     * Works nights instead of days.
+     *
+     * <p>Not persisted as an entity-data value because nothing renders it; the
+     * saved flag is enough, and it survives the dormitory rebuilding the golem
+     * at each shift change because that goes through NBT.
+     */
+    private boolean nightShift;
+
+    public boolean isNightShift() {
+        return nightShift;
+    }
+
+    public void setNightShift(boolean value) {
+        this.nightShift = value;
     }
 
     public boolean isImmortal() {

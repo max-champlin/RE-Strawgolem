@@ -295,8 +295,24 @@ public class BunkhouseBlockEntity extends BlockEntity {
         return sleepers.size();
     }
 
+    /**
+     * Wake only the shift that is due.
+     *
+     * <p>Releasing everyone at dawn would let a night-shift golem out into its
+     * own bedtime, and GoHomeGoal would walk it straight back in - a golem
+     * bouncing off its own front door forever. Day workers leave at dawn, night
+     * workers at dusk.
+     */
+    public int releaseShift(boolean daylight) {
+        return release(tag -> tag.getBoolean("nightShift") != daylight);
+    }
+
     /** Wakes everyone: golems pop back out next to the bunkhouse. */
     public int releaseAll() {
+        return release(tag -> true);
+    }
+
+    private int release(java.util.function.Predicate<CompoundTag> due) {
         if (level == null || level.isClientSide || sleepers.isEmpty()) {
             return 0;
         }
@@ -307,6 +323,10 @@ public class BunkhouseBlockEntity extends BlockEntity {
         List<CompoundTag> kept = new ArrayList<>();
         int i = 0;
         for (CompoundTag tag : sleepers) {
+            if (!due.test(tag)) {
+                kept.add(tag);          // not their shift; stays in bed
+                continue;
+            }
             Entity entity = EntityType.loadEntityRecursive(tag, level, e -> e);
             if (entity == null) {
                 org.hero.strawgolem.Constants.LOG.error(
@@ -446,9 +466,7 @@ public class BunkhouseBlockEntity extends BlockEntity {
         // Reading the clock instead is rain-proof, thunder-proof, and cannot be
         // defeated by a roof over the garden.
         long timeOfDay = level.getDayTime() % 24000L;
-        if (timeOfDay < 12000L) {
-            house.releaseAll();
-        }
+        house.releaseShift(timeOfDay < 12000L);
     }
 
     /**
